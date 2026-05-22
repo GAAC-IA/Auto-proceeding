@@ -12,19 +12,35 @@ OpenAI와 Notion API를 사용해 회의 텍스트를 업무용 회의록으로 
 
 ## 실행 방법
 
+### 환경변수 설정
+
 1. 환경변수 파일을 준비합니다.
 
 ```bash
-copy .env.local.example .env.local
+copy .env.example .env.local
 ```
 
-2. `.env.local`에 값을 입력합니다.
+2. `.env.local`에 필요한 값을 입력합니다.
 
 ```bash
-OPENAI_API_KEY=
-NOTION_API_KEY=
-NOTION_DATABASE_ID=
+# OpenAI Configuration
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-4-mini
+
+# n8n Webhook Configuration
+N8N_WEBHOOK_URL=your_n8n_webhook_url_here
+
+# Notion Configuration
+NOTION_DATABASE_ID=your_notion_database_id_here
+
+# Email Configuration
+DEFAULT_RECIPIENT_EMAIL=your_email@example.com
+
+# Google Calendar Configuration
+GOOGLE_CALENDAR_ID=primary
 ```
+
+### 서버 실행
 
 3. 개발 서버를 실행합니다.
 

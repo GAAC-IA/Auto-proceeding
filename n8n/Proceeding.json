@@ -1,0 +1,400 @@
+{
+  "name": "Proceeding",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\n\nif (!body.title) throw new Error('title이 없습니다.');\nif (!body.summary) throw new Error('summary가 없습니다.');\n\nreturn [{\n  json: {\n    body: {\n      title: body.title,\n      summary: body.summary,\n      tags: Array.isArray(body.tags) ? body.tags : [],\n      syncedAt: body.syncedAt || new Date().toISOString(),\n      key_points: Array.isArray(body.key_points) ? body.key_points : [],\n      decisions: Array.isArray(body.decisions) ? body.decisions : [],\n      action_items: Array.isArray(body.action_items) ? body.action_items : [],\n      transcript: body.transcript || '',\n      recipientEmail: body.recipientEmail || body.email || ''\n    }\n  }\n}];"
+      },
+      "id": "643b0d18-1421-48c6-b38d-c3cbe1f420d5",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2928,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $node['Validate Input'].json.body.recipientEmail || $env.DEFAULT_RECIPIENT_EMAIL }}",
+        "subject": "={{ '[회의록] ' + $node['Validate Input'].json.body.title }}",
+        "message": "={{ '회의록이 Notion에 저장되었습니다.\\n\\n[회의 제목]\\n' + $node['Validate Input'].json.body.title + '\\n\\n[요약]\\n' + $node['Validate Input'].json.body.summary + '\\n\\n[핵심 논의]\\n' + ($node['Validate Input'].json.body.key_points?.map(i => '- ' + i).join('\\n') || '없음') + '\\n\\n[결정사항]\\n' + ($node['Validate Input'].json.body.decisions?.map(i => '- ' + i).join('\\n') || '없음') + '\\n\\n[액션 아이템]\\n' + ($node['Validate Input'].json.body.action_items?.map(i => '- ' + i.task + ' / 담당: ' + (i.assignee || '미정') + ' / 마감: ' + (i.due_date || '미정')).join('\\n') || '없음') }}",
+        "options": {}
+      },
+      "id": "8409a9ed-8830-4846-82b5-ec64bbab686e",
+      "name": "Gmail - Send Summary",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -3152,
+        800
+      ],
+      "webhookId": "7c0548b6-c8b0-4802-a5c6-96cbebff4748"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $node['Validate Input'].json.body;\nconst actionItems = body.action_items || [];\n\nif (actionItems.length === 0) {\n  return [{ json: { skip: true, message: '액션 아이템 없음', meetingTitle: body.title } }];\n}\n\nreturn actionItems.map((item) => ({\n  json: {\n    skip: false,\n    task: item.task || '작업명 없음',\n    assignee: item.assignee || '미정',\n    due_date: item.due_date || null,\n    meetingTitle: body.title || '회의 제목 없음',\n    summary: body.summary || ''\n  }\n}));"
+      },
+      "id": "899cae86-f17f-4a5e-b2a6-cc40e756fbb2",
+      "name": "Prepare Action Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3008,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "f6e6a4c0-9ed8-45d0-9d7c-9199788851a7",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "188111e5-0327-454f-8000-d25055488f9c",
+      "name": "IF - Has Action Items",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2832,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "task": "={{ $json.task }}",
+        "additionalFields": {
+          "notes": "={{ '회의: ' + $json.meetingTitle + '\\n담당자: ' + $json.assignee + '\\n마감일: ' + ($json.due_date || '미정') + '\\n\\n요약: ' + $json.summary }}"
+        }
+      },
+      "id": "c093517f-7c0c-4b66-9a23-55ae2067226b",
+      "name": "Google Tasks - Create Task",
+      "type": "n8n-nodes-base.googleTasks",
+      "typeVersion": 1,
+      "position": [
+        -2512,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "fbf47584-f8bf-4bd6-82e0-2e832375ba30",
+              "leftValue": "={{ $json.due_date }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "693c5040-f1aa-40f9-b3dc-0cdfbe1f7a95",
+      "name": "IF - Has Due Date",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2368,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_CALENDAR_ID }}",
+          "mode": "list",
+          "cachedResultName": "primary"
+        },
+        "start": "={{ $json.due_date }}",
+        "end": "={{ $json.due_date }}",
+        "additionalFields": {
+          "description": "={{ '회의: ' + $json.meetingTitle + '\\n담당자: ' + $json.assignee + '\\n요약: ' + $json.summary }}",
+          "summary": "={{ $json.task }}"
+        }
+      },
+      "id": "87da0cdf-a7df-41a2-99a6-dc9e37dd705c",
+      "name": "Google Calendar - Create Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -2128,
+        688
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"회의록 저장 및 자동화 요청이 완료되었습니다.\",\n  \"title\": \"{{ $node['Validate Input'].json.body.title }}\"\n}",
+        "options": {}
+      },
+      "id": "b28d997b-f0b1-490f-8914-4f076319ffd0",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1856,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "start-docs",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "62bf704e-323d-4e6a-9eb6-ebc49c4c8bcb",
+      "name": "Webhook1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -3184,
+        464
+      ],
+      "webhookId": "532fabcb-1399-4374-a322-45aea1855648"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "={{ $env.NOTION_DATABASE_ID }}",
+          "mode": "list",
+          "cachedResultName": "회의록 저장",
+          "cachedResultUrl": ""
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "회의 제목|title",
+              "title": "={{ $json.body.title }}"
+            },
+            {
+              "key": "요약|rich_text",
+              "textContent": "={{ $json.body.summary }}"
+            },
+            {
+              "key": "태그|multi_select",
+              "multiSelectValue": "={{ $json.body.tags }}"
+            },
+            {
+              "key": "회의 일자|date",
+              "date": "={{ $json.body.syncedAt }}",
+              "timezone": "Asia/Seoul"
+            }
+          ]
+        },
+        "blockUi": {
+          "blockValues": [
+            {
+              "type": "heading_1",
+              "textContent": "📌 회의 요약"
+            },
+            {
+              "textContent": "={{ $json.body.summary }}"
+            },
+            {
+              "type": "heading_2",
+              "textContent": "💡 핵심 논의 및 결정사항"
+            },
+            {
+              "textContent": "=[핵심 논의 내용]\n{{ $json.body.key_points && $json.body.key_points.length > 0 ? $json.body.key_points.map(i => '• ' + i).join('\\n') : '없음' }}\n\n[결정사항]\n{{ $json.body.decisions && $json.body.decisions.length > 0 ? $json.body.decisions.map(i => '• ' + i).join('\\n') : '없음' }}"
+            },
+            {
+              "type": "heading_2",
+              "textContent": "📋 담당자별 액션 아이템"
+            },
+            {
+              "textContent": "={{ $json.body.action_items && $json.body.action_items.length > 0 ? $json.body.action_items.map(i => '☐ ' + i.task + ' (담당: ' + (i.assignee || '미정') + ' | 마감: ' + (i.due_date || '미정') + ')').join('\\n') : '없음' }}"
+            },
+            {
+              "type": "heading_2",
+              "textContent": "🎙️ 전체 대화 스크립트"
+            },
+            {
+              "textContent": "={{ $json.body.transcript }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "92ef62ac-a20c-4639-9a83-eb72aa1bd849",
+      "name": "Create a database page1",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -2624,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "content": "검증 후 없을 시 오류 발송 flow 추가\n"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2976,
+        240
+      ],
+      "typeVersion": 1,
+      "id": "bed2e27d-0d5d-4109-b998-532704a2b80f",
+      "name": "Sticky Note"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Create a database page1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Send Summary": {
+      "main": [
+        [
+          {
+            "node": "Prepare Action Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Action Items": {
+      "main": [
+        [
+          {
+            "node": "IF - Has Action Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Has Action Items": {
+      "main": [
+        [
+          {
+            "node": "Google Tasks - Create Task",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Tasks - Create Task": {
+      "main": [
+        [
+          {
+            "node": "IF - Has Due Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Has Due Date": {
+      "main": [
+        [
+          {
+            "node": "Google Calendar - Create Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Calendar - Create Event": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a database page1": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Send Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7456c1b2-0756-4fdd-991d-08a9384a9afd",
+  "meta": {
+    "instanceId": "b64a9de407c58ba3c31c68b2f0741d8172671930a051ce4c3ae795438cefecd5"
+  },
+  "id": "dOJ4cFtahfcW6FnI",
+  "tags": []
+}
