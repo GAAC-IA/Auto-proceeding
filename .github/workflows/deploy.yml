@@ -1,0 +1,37 @@
+name: Deploy Web
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd ~/Auto-proceeding
+
+            git pull origin main
+
+            cat > .env.production << 'EOF'
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NOTION_API_KEY=${{ secrets.NOTION_API_KEY }}
+            NOTION_DATABASE_ID=${{ secrets.NOTION_DATABASE_ID }}
+            N8N_WEBHOOK_URL=${{ secrets.N8N_WEBHOOK_URL }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            EOF
+
+            npm install
+            npm run build
+
+            pm2 restart ama-web || pm2 start npm --name ama-web -- start
+            pm2 save
