@@ -8,19 +8,13 @@ import {
 import { getNotionConnection } from "@/lib/notion-connections"
 
 type FetchNotionMeetingRecordsOptions = {
-  userId?: string
+  userId: string
 }
 
 export async function fetchNotionMeetingRecords(
-  options: FetchNotionMeetingRecordsOptions = {}
+  options: FetchNotionMeetingRecordsOptions
 ): Promise<NotionMeetingRecord[]> {
-  const credentials = options.userId
-    ? await getUserNotionCredentials(options.userId)
-    : getEnvironmentNotionCredentials()
-
-  if (!credentials) {
-    throw new Error("NOTION_API_KEY 또는 NOTION_DATABASE_ID가 설정되지 않았습니다.")
-  }
+  const credentials = await getUserNotionCredentials(options.userId)
 
   const notion = new Client({ auth: credentials.apiKey })
   const dataSourceId = await resolveDataSourceId(notion, credentials.databaseId)
@@ -61,20 +55,6 @@ async function getUserNotionCredentials(userId: string) {
   return {
     apiKey: connection.accessToken,
     databaseId: connection.notionDatabaseId,
-  }
-}
-
-function getEnvironmentNotionCredentials() {
-  const notionApiKey = process.env.NOTION_API_KEY
-  const notionDatabaseId = process.env.NOTION_DATABASE_ID
-
-  if (!notionApiKey || !notionDatabaseId) {
-    return null
-  }
-
-  return {
-    apiKey: notionApiKey,
-    databaseId: notionDatabaseId,
   }
 }
 
