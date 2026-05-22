@@ -1,52 +1,41 @@
-# 회의록 AI 분석 + Notion 저장 MVP 구현 계획
+# MeetAI MVP 구현 메모
 
-## Summary
-- 현재 폴더에 `npx.cmd create-next-app@latest .` 기반으로 Next.js App Router, TypeScript, Tailwind 프로젝트를 생성한다.
-- 텍스트 입력 → `/api/analyze` OpenAI 구조화 출력 → 결과 미리보기 → `/api/notion` Notion DB 저장 흐름을 구현한다.
-- 음성 업로드, Supabase, n8n, Zoom/Webex 연동은 MVP 범위에서 제외한다.
+## 현재 구현 범위
+- `/` 단일 화면 안에서 대시보드, 회의 분석, 회의 기록, 지식 아카이브를 내부 전환한다.
+- 회의 분석은 텍스트 입력 또는 브라우저 마이크 녹음을 받아 OpenAI 구조화 출력으로 회의록을 만든다.
+- 녹음 시작 시 브라우저 마이크 권한 상태를 화면에 보여주고, 거부/미지원 상태를 명확히 안내한다.
+- 분석 결과는 n8n 웹훅으로 전달되며, n8n 워크플로우가 Notion 데이터베이스 저장과 후속 자동화를 담당한다.
+- 회의 기록과 지식 아카이브는 `/api/notion`이 Notion DB에서 조회한 데이터를 기반으로 표시한다.
 
-## Key Changes
-- UI: `/` 페이지에 Shadcn `Card`, `Textarea`, `Button`, `Alert`, `Badge` 기반 입력/분석/저장/결과 미리보기 화면을 만든다.
-- API:
-  - `POST /api/analyze`: `{ meetingText }` 입력, 빈 값 검증, OpenAI Responses API structured output으로 `MeetingSummary` 반환.
-  - `POST /api/notion`: `MeetingSummary` 입력, Notion page 생성 후 `{ success, pageId? }` 반환.
-- Shared logic:
-  - `ActionItem`, `MeetingSummary` 타입과 Zod schema를 공용으로 둔다.
-  - AI 응답 JSON 파싱/검증 함수와 Notion properties 변환 함수를 분리해 테스트 가능하게 만든다.
-- Notion 저장 매핑:
-  - `Title`: `title`
-  - `Summary`: rich_text
-  - `Key Points`: rich_text
-  - `Decisions`: rich_text
-  - `Action Items`: rich_text
-  - `Tags`: multi_select
-  - `Created At`: date
-- 환경 파일:
-  - `.env.local.example`에 `OPENAI_API_KEY`, `NOTION_API_KEY`, `NOTION_DATABASE_ID`를 추가한다.
-  - OpenAI 모델은 MVP 기본값 `gpt-5.4-mini`로 두고, 필요 시 코드에서 쉽게 바꿀 수 있게 상수화한다.
+## 자동화 워크플로우
+1. 사용자가 회의 텍스트를 입력하거나 실시간 음성 녹음을 종료한다.
+2. 음성 입력인 경우 `/api/transcribe`가 Whisper 전사를 수행해 텍스트로 변환한다.
+3. `/api/analyze`가 OpenAI Responses API와 Zod 스키마를 사용해 회의 제목, 요약, 핵심 논의, 결정사항, 액션 아이템, 태그를 생성한다.
+4. 클라이언트는 생성된 회의록을 미리 보여주고 `/api/n8n`으로 요약 데이터와 전체 전사 텍스트를 전송한다.
+5. n8n은 웹훅 입력을 검증한 뒤 Notion DB에 회의록 페이지를 생성한다.
+6. n8n은 액션 아이템이 있으면 Google Tasks, Google Calendar, Gmail 같은 후속 자동화를 실행한다.
+7. 대시보드, 회의 기록, 지식 아카이브는 `/api/notion`을 통해 Notion DB의 최신 회의록을 다시 조회해 표시한다.
 
-## Test Plan
-- Vitest를 추가하고 `describe/it` 구조와 한글 테스트 설명을 사용한다.
-- 테스트 대상:
-  - 정상 JSON이 `MeetingSummary`로 파싱되는지 검증.
-  - 빈 회의 텍스트가 `/api/analyze` 입력 검증에서 거부되는지 검증.
-  - Notion 저장용 properties 변환이 지정된 DB 속성명과 타입에 맞는지 검증.
-- 검증 명령:
-  - `npm.cmd run test`
-  - `npm.cmd run lint`
-  - `npm.cmd run build`
-  - 가능하면 `npm.cmd run dev`를 짧게 실행해 로컬 dev 서버 시작 여부를 확인한다.
+## Notion 데이터 매핑
+- `회의 제목`: title
+- `요약`: rich_text
+- `태그`: multi_select
+- `회의 일자`: date
+- 페이지 본문 블록: 핵심 논의, 결정사항, 액션 아이템, 전체 대화 스크립트
 
-## Assumptions
-- 현재 README는 `# Auto-proceeding`만 있으므로 Next.js MVP용 README로 교체한다.
-- 패키지 설치와 `create-next-app` 실행에는 네트워크 접근 승인이 필요할 수 있다.
-- Notion DB는 사용자가 제시한 속성명을 정확히 가진 상태라고 가정한다.
-- OpenAI structured output은 공식 문서 권장 방식인 Responses API `text.format`/Zod helper를 사용한다.
+## 환경 변수
+- `OPENAI_API_KEY`: OpenAI 분석 및 전사에 사용한다.
+- `OPENAI_MODEL`: 기본값은 `gpt-5.4-mini`다.
+- `N8N_WEBHOOK_URL`: 분석 결과를 받을 n8n 웹훅 주소다.
+- `NOTION_API_KEY`: Notion DB 조회 API에서 사용한다.
+- `NOTION_DATABASE_ID`: 회의록을 저장하고 조회할 Notion 데이터베이스 ID다.
 
-## References
-- [Next.js create-next-app CLI](https://nextjs.org/docs/app/api-reference/cli/create-next-app)
-- [shadcn/ui Next.js install](https://ui.shadcn.com/docs/installation/next)
-- [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
-- [OpenAI Models](https://developers.openai.com/api/docs/models)
-- [Notion Create a page](https://developers.notion.com/reference/post-page)
-- [Notion Page properties](https://developers.notion.com/reference/property-value-object)
+## 검증 명령
+```bash
+npm.cmd install
+npm.cmd run test
+npm.cmd run lint
+npm.cmd run build
+```
+
+현재 워크스페이스에 `node_modules`가 없으면 `next`, `eslint`, `vitest` 실행 파일을 찾을 수 없으므로 의존성 설치 후 검증한다.
