@@ -15,9 +15,7 @@ import {
   FileText,
   FolderOpen,
   Loader2,
-  Lock,
   LogOut,
-  Mail,
   Mic,
   Moon,
   Network,
@@ -25,6 +23,7 @@ import {
   ChevronsRight,
   Play,
   RefreshCw,
+  Search,
   ShieldCheck,
   Sparkles,
   Square,
@@ -72,6 +71,20 @@ type NotionResponse = {
   error?: string
 }
 
+type ArchiveSearchSource = Pick<
+  NotionMeetingRecord,
+  "id" | "title" | "summary" | "tags" | "meetingDate" | "url"
+> & {
+  snippet: string
+  score: number
+}
+
+type ArchiveSearchResponse = {
+  answer?: string
+  sources?: ArchiveSearchSource[]
+  error?: string
+}
+
 type WorkspaceView = "dashboard" | "analysis" | "records" | "archive"
 type ThemeMode = "light" | "dark"
 
@@ -110,7 +123,7 @@ const sidebarItems: Array<{
     {
       id: "archive",
       label: "지식 아카이브",
-      description: "태그 기반 지식",
+      description: "Notion RAG 검색",
       icon: <Archive className="size-4" />,
     },
   ]
@@ -1349,50 +1362,175 @@ function KnowledgeArchiveView({
   error,
   onRefresh,
 }: NotionViewProps) {
-  const groupedRecords = useMemo(() => groupRecordsByTag(records), [records])
+  const [query, setQuery] = useState("")
+  const [answer, setAnswer] = useState<string | null>(null)
+  const [sources, setSources] = useState<ArchiveSearchSource[]>([])
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
+  const sampleQuestions = useMemo(
+    () => [
+      "최근 결정된 액션 아이템을 담당자별로 정리해줘",
+      "지난 회의에서 리스크로 언급된 내용을 찾아줘",
+      "특정 프로젝트의 결정사항만 요약해줘",
+    ],
+    []
+  )
+
+  const handleSearch = useCallback(async () => {
+    const trimmedQuery = query.trim()
+    if (trimmedQuery.length < 2) {
+      setSearchError("검색 질문을 2자 이상 입력해 주세요.")
+      return
+    }
+
+    setIsSearching(true)
+    setSearchError(null)
+
+    try {
+      const response = await authenticatedFetch("/api/archive/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query: trimmedQuery }),
+      })
+      const data = (await response.json()) as ArchiveSearchResponse
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "아카이브 검색에 실패했습니다.")
+      }
+
+      setAnswer(data.answer ?? "")
+      setSources(data.sources ?? [])
+    } catch (requestError) {
+      setSearchError(toErrorMessage(requestError))
+    } finally {
+      setIsSearching(false)
+    }
+  }, [query])
 
   return (
     <div className="space-y-6 p-5 md:p-8">
       <NotionStateBanner error={error} isLoading={isLoading} onRefresh={onRefresh} />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {groupedRecords.map(({ tag, items }) => (
-          <Card key={tag} className="border-slate-200 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/85 backdrop-blur-md">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-2">
-                  <Archive className="size-5 text-blue-600" />
-                  #{tag}
-                </span>
-                <Badge variant="outline">{items.length}건</Badge>
-              </CardTitle>
-              <CardDescription>
-                같은 주제로 묶인 회의 요약과 후속 액션입니다.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {items.slice(0, 5).map((record) => (
-                <div
-                  key={record.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 dark:border-zinc-700/60 dark:bg-zinc-900/60"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="font-black tracking-tight">{record.title}</h3>
-                    <span className="shrink-0 text-xs font-semibold text-slate-400">
-                      {formatDate(record.meetingDate)}
-                    </span>
-                  </div>
-                  <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600 dark:text-slate-400">
-                    {record.summary || "요약 정보가 없습니다."}
-                  </p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <Card className="border-slate-200 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/85 backdrop-blur-md">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Search className="size-5 text-blue-600" />
+            회의록 RAG 검색
+          </CardTitle>
+          <CardDescription>
+            Notion 데이터베이스의 회의록을 의미 기반으로 검색하고 근거 회의록과 함께 답변합니다.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-start">
+            <Textarea
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="예: 이번 달 회의에서 결정된 배포 일정과 남은 액션 아이템을 알려줘"
+              className="min-h-28 resize-none bg-slate-50 dark:bg-zinc-900/60"
+            />
+            <Button
+              onClick={handleSearch}
+              disabled={isSearching || isLoading}
+              className="h-11 lg:h-28"
+            >
+              {isSearching ? (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              ) : (
+                <Search className="mr-2 size-4" />
+              )}
+              검색
+            </Button>
+          </div>
 
-      {!isLoading && groupedRecords.length === 0 && (
+          <div className="flex flex-wrap gap-2">
+            {sampleQuestions.map((sampleQuestion) => (
+              <button
+                key={sampleQuestion}
+                type="button"
+                onClick={() => setQuery(sampleQuestion)}
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:border-blue-400/40 dark:hover:text-blue-300"
+              >
+                {sampleQuestion}
+              </button>
+            ))}
+          </div>
+
+          {searchError && (
+            <Alert className="border-red-200 bg-red-50 text-red-900 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200">
+              <AlertTriangle className="size-4" />
+              <AlertTitle>검색 오류</AlertTitle>
+              <AlertDescription>{searchError}</AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      {answer && (
+        <Card className="border-slate-200 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/85 backdrop-blur-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bot className="size-5 text-blue-600" />
+              검색 답변
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700 dark:text-slate-300">
+              {answer}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {sources.length > 0 && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {sources.map((source) => (
+            <Card key={source.id} className="border-slate-200 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/85 backdrop-blur-md">
+              <CardHeader>
+                <CardTitle className="flex items-start justify-between gap-3">
+                  <span className="min-w-0">
+                    <span className="block truncate text-base">{source.title}</span>
+                    <span className="mt-1 block text-xs font-semibold text-slate-400">
+                      {formatDate(source.meetingDate)}
+                    </span>
+                  </span>
+                  <Badge variant="outline">{Math.round(source.score * 100)}%</Badge>
+                </CardTitle>
+                <CardDescription className="line-clamp-2">
+                  {source.summary || "요약 정보가 없습니다."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="line-clamp-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-3 text-sm leading-6 text-slate-600 dark:border-zinc-700/60 dark:bg-zinc-900/60 dark:text-slate-400">
+                  {source.snippet}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {source.tags.slice(0, 5).map((tag) => (
+                    <Badge key={tag} className="bg-blue-50 text-blue-700 hover:bg-blue-50 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700/50 dark:hover:bg-zinc-750">
+                      #{tag}
+                    </Badge>
+                  ))}
+                  {source.url && (
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ml-auto inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700"
+                    >
+                      Notion
+                      <ExternalLink className="size-3" />
+                    </a>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {!isLoading && records.length === 0 && (
         <Card className="border-slate-200 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/85 backdrop-blur-md">
           <CardContent className="py-10">
             <EmptyNotionRecords />
@@ -1846,21 +1984,6 @@ function getTagCounts(records: NotionMeetingRecord[]) {
   return [...counts.entries()]
     .map(([tag, count]) => ({ tag, count }))
     .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
-}
-
-function groupRecordsByTag(records: NotionMeetingRecord[]) {
-  const groups = new Map<string, NotionMeetingRecord[]>()
-
-  for (const record of records) {
-    const tags = record.tags.length > 0 ? record.tags : ["분류 없음"]
-    for (const tag of tags) {
-      groups.set(tag, [...(groups.get(tag) ?? []), record])
-    }
-  }
-
-  return [...groups.entries()]
-    .map(([tag, items]) => ({ tag, items }))
-    .sort((a, b) => b.items.length - a.items.length || a.tag.localeCompare(b.tag))
 }
 
 function formatDate(value: string | null) {
