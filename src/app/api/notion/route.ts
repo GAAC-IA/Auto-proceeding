@@ -4,10 +4,16 @@ import {
   extractNotionPageSections,
   toNotionMeetingRecord,
 } from "@/lib/notion"
+import { requireAuthenticatedUser } from "@/lib/server-auth"
 
 export const runtime = "nodejs"
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await requireAuthenticatedUser(request)
+  if (!auth.ok) {
+    return auth.response
+  }
+
   const notionApiKey = process.env.NOTION_API_KEY
   const notionDatabaseId = process.env.NOTION_DATABASE_ID
 

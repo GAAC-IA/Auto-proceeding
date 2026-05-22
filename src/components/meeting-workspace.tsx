@@ -35,6 +35,7 @@ import {
   X,
 } from "lucide-react"
 import Image from "next/image"
+import type { User as SupabaseUser } from "@supabase/supabase-js"
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -55,6 +56,7 @@ import {
 } from "@/hooks/use-audio-recorder"
 import type { MeetingSummary } from "@/lib/meeting"
 import type { NotionMeetingRecord } from "@/lib/notion"
+import { isSupabaseConfigured, supabase } from "@/lib/supabase"
 
 type ApiError = {
   error?: string
@@ -74,17 +76,12 @@ type WorkspaceView = "dashboard" | "analysis" | "records" | "archive"
 type ThemeMode = "light" | "dark"
 
 type AuthUser = {
+  id: string
   email: string
   name: string
 }
 
-const AUTH_STORAGE_KEY = "ama-session"
 const THEME_STORAGE_KEY = "ama-theme"
-const TEST_LOGIN_ACCOUNT = {
-  email: "test@ama.ai",
-  password: "ama1234!",
-  name: "AMA Tester",
-}
 
 const sidebarItems: Array<{
   id: WorkspaceView
@@ -119,10 +116,9 @@ const sidebarItems: Array<{
   ]
 
 export function MeetingWorkspace() {
-  const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme())
-  const [authUser, setAuthUser] = useState<AuthUser | null>(() =>
-    getStoredUser()
-  )
+  const [theme, setTheme] = useState<ThemeMode>("light")
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  const [isClientReady, setIsClientReady] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(240)
   const [isResizing, setIsResizing] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
@@ -182,16 +178,57 @@ export function MeetingWorkspace() {
     sidebarItems.find((item) => item.id === activeView) ?? sidebarItems[1]
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setTheme(getInitialTheme())
+      setIsClientReady(true)
+    }, 0)
+
+    return () => window.clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
+    if (!supabase) {
+      return
+    }
+
+    let isMounted = true
+
+    async function loadSession() {
+      const { data } = await supabase!.auth.getSession()
+      if (isMounted) {
+        setAuthUser(data.session?.user ? toAuthUser(data.session.user) : null)
+      }
+    }
+
+    void loadSession()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUser(session?.user ? toAuthUser(session.user) : null)
+    })
+
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isClientReady) {
+      return
+    }
+
     document.documentElement.classList.toggle("dark", theme === "dark")
     window.localStorage.setItem(THEME_STORAGE_KEY, theme)
-  }, [theme])
+  }, [isClientReady, theme])
 
   const loadNotionRecords = useCallback(async () => {
     setIsRecordsLoading(true)
     setRecordsError(null)
 
     try {
-      const response = await fetch("/api/notion")
+      const response = await authenticatedFetch("/api/notion")
       const data = (await response.json()) as NotionResponse
 
       if (!response.ok) {
@@ -219,12 +256,11 @@ export function MeetingWorkspace() {
   }, [authUser, loadNotionRecords])
 
   const handleLogin = useCallback((user: AuthUser) => {
-    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user))
     setAuthUser(user)
   }, [])
 
-  const handleLogout = useCallback(() => {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY)
+  const handleLogout = useCallback(async () => {
+    await supabase?.auth.signOut()
     setAuthUser(null)
   }, [])
 
@@ -258,6 +294,7 @@ export function MeetingWorkspace() {
       const response = await fetch("/api/transcribe", {
         method: "POST",
         body: formData,
+        ...(await getAuthFetchOptions()),
       })
       const data = await response.json()
 
@@ -297,7 +334,7 @@ export function MeetingWorkspace() {
   ) {
     setIsN8nSending(true)
     try {
-      const response = await fetch("/api/n8n", {
+      const response = await authenticatedFetch("/api/n8n", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -338,7 +375,7 @@ export function MeetingWorkspace() {
     }
 
     try {
-      const response = await fetch("/api/analyze", {
+      const response = await authenticatedFetch("/api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -704,14 +741,19 @@ function LoginScreen({
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [authNotice, setAuthNotice] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Sign Up fields
   const [signUpEmail, setSignUpEmail] = useState("")
   const [signUpPassword, setSignUpPassword] = useState("")
   const [signUpError, setSignUpError] = useState<string | null>(null)
+  const [signUpNotice, setSignUpNotice] = useState<string | null>(null)
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    setError(null)
+    setAuthNotice(null)
 
     const trimmedEmail = email.trim()
     if (!trimmedEmail || !password.trim()) {
@@ -724,22 +766,40 @@ function LoginScreen({
       return
     }
 
-    if (
-      trimmedEmail !== TEST_LOGIN_ACCOUNT.email ||
-      password !== TEST_LOGIN_ACCOUNT.password
-    ) {
-      setError("테스트 계정 정보가 일치하지 않습니다.")
+    if (!supabase) {
+      setError("Supabase 환경변수(NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY)를 설정해주세요.")
       return
     }
 
-    onLogin({
-      email: TEST_LOGIN_ACCOUNT.email,
-      name: TEST_LOGIN_ACCOUNT.name,
-    })
+    setIsSubmitting(true)
+
+    try {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      })
+
+      if (signInError) {
+        throw signInError
+      }
+
+      if (!data.user) {
+        setAuthNotice("로그인은 요청됐지만 사용자 정보를 받지 못했습니다. 이메일 인증 상태를 확인해주세요.")
+        return
+      }
+
+      onLogin(toAuthUser(data.user))
+    } catch (authError) {
+      setError(toErrorMessage(authError))
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  function handleSignUpSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSignUpSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    setSignUpError(null)
+    setSignUpNotice(null)
 
     const trimmedEmail = signUpEmail.trim()
     if (!trimmedEmail || !signUpPassword.trim()) {
@@ -752,13 +812,42 @@ function LoginScreen({
       return
     }
 
-    // Simulate successful sign up
-    alert("회원가입이 완료되었습니다! 가입하신 이메일과 임시 테스트 비밀번호(ama1234!)로 테스트 로그인이 가능합니다.")
+    if (!supabase) {
+      setSignUpError("Supabase 환경변수(NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY)를 설정해주세요.")
+      return
+    }
 
-    // Set email and switch to login
-    setEmail(trimmedEmail)
-    setIsSignUp(false)
-    setSignUpError(null)
+    setIsSubmitting(true)
+
+    try {
+      const { data, error: signUpAuthError } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password: signUpPassword,
+        options: {
+          emailRedirectTo:
+            typeof window === "undefined" ? undefined : window.location.origin,
+        },
+      })
+
+      if (signUpAuthError) {
+        throw signUpAuthError
+      }
+
+      setEmail(trimmedEmail)
+      setSignUpPassword("")
+
+      if (data.session && data.user) {
+        onLogin(toAuthUser(data.user))
+        return
+      }
+
+      setIsSignUp(false)
+      setSignUpNotice("회원가입이 완료되었습니다. Supabase 이메일 인증이 켜져 있다면 메일 인증 후 로그인해주세요.")
+    } catch (authError) {
+      setSignUpError(toErrorMessage(authError))
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -777,12 +866,12 @@ function LoginScreen({
             className={styles.logo}
           />
           <div className={styles.testAccount}>
-            <p className={styles.testAccountTitle}>임시 테스트 계정</p>
+            <p className={styles.testAccountTitle}>Supabase Auth</p>
             <p className={styles.testAccountText}>
-              이메일: {TEST_LOGIN_ACCOUNT.email}
+              {isSupabaseConfigured ? "가입한 이메일과 비밀번호로 로그인하세요." : "Supabase 환경변수를 먼저 설정해주세요."}
             </p>
             <p className={styles.testAccountText}>
-              비밀번호: {TEST_LOGIN_ACCOUNT.password}
+              Supabase Auth
             </p>
           </div>
 
@@ -812,17 +901,19 @@ function LoginScreen({
             </div>
 
             {error && <div className={styles.alert}>{error}</div>}
+            {authNotice && <div className={styles.alert}>{authNotice}</div>}
 
             <button
               type="submit"
               className={styles.submitBtn}
+              disabled={isSubmitting}
             >
               로그인
             </button>
           </form>
           <a className={styles.forgotLink}>Forgot password?</a>
           <p className={styles.footer}>
-            Don't have an account? <a onClick={() => { setIsSignUp(true); setError(null); }}>Register!</a>
+            Don&apos;t have an account? <a onClick={() => { setIsSignUp(true); setError(null); setAuthNotice(null); }}>Register!</a>
           </p>
         </div>
       ) : (
@@ -864,10 +955,12 @@ function LoginScreen({
             </div>
 
             {signUpError && <div className={styles.alert}>{signUpError}</div>}
+            {signUpNotice && <div className={styles.alert}>{signUpNotice}</div>}
 
             <button
               type="submit"
               className={styles.submitBtn}
+              disabled={isSubmitting}
             >
               Sign up
             </button>
@@ -1639,29 +1732,44 @@ function getInitialTheme(): ThemeMode {
     : "light"
 }
 
-function getStoredUser(): AuthUser | null {
-  if (typeof window === "undefined") {
-    return null
+async function authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const authOptions = await getAuthFetchOptions(init)
+  return fetch(input, authOptions)
+}
+
+async function getAuthFetchOptions(init: RequestInit = {}): Promise<RequestInit> {
+  if (!supabase) {
+    return init
   }
 
-  try {
-    const stored = window.localStorage.getItem(AUTH_STORAGE_KEY)
-    if (!stored) {
-      return null
-    }
-
-    const parsed = JSON.parse(stored) as Partial<AuthUser>
-    if (typeof parsed.email === "string" && typeof parsed.name === "string") {
-      return {
-        email: parsed.email,
-        name: parsed.name,
-      }
-    }
-  } catch {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY)
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) {
+    return init
   }
 
-  return null
+  const headers = new Headers(init.headers)
+  headers.set("Authorization", `Bearer ${token}`)
+
+  return {
+    ...init,
+    headers,
+  }
+}
+
+function toAuthUser(user: SupabaseUser): AuthUser {
+  const email = user.email ?? ""
+  const metadataName = user.user_metadata?.name
+  const name =
+    typeof metadataName === "string" && metadataName.trim()
+      ? metadataName.trim()
+      : email.split("@")[0] || "AMA User"
+
+  return {
+    id: user.id,
+    email,
+    name,
+  }
 }
 
 function getPermissionLabel(state: MicrophonePermissionState) {

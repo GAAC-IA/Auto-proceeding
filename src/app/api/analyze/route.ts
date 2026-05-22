@@ -6,6 +6,7 @@ import {
   parseMeetingSummaryJson,
   validateMeetingText,
 } from "@/lib/meeting"
+import { requireAuthenticatedUser } from "@/lib/server-auth"
 
 export const runtime = "nodejs"
 
@@ -22,6 +23,11 @@ markdown 코드블럭은 절대 사용하지 않는다.
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireAuthenticatedUser(request)
+    if (!auth.ok) {
+      return auth.response
+    }
+
     const meetingText = validateMeetingText(await request.json())
 
     if (!process.env.OPENAI_API_KEY) {
