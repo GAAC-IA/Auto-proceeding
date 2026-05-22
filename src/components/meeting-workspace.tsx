@@ -1,5 +1,7 @@
 "use client"
 
+import styles from "./login.module.css"
+
 import {
   AlertTriangle,
   Archive,
@@ -19,8 +21,8 @@ import {
   Mic,
   Moon,
   Network,
-  PanelLeftClose,
-  PanelLeftOpen,
+  ChevronsLeft,
+  ChevronsRight,
   Play,
   RefreshCw,
   ShieldCheck,
@@ -30,6 +32,7 @@ import {
   Tags,
   Trash2,
   User,
+  X,
 } from "lucide-react"
 import Image from "next/image"
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
@@ -89,38 +92,79 @@ const sidebarItems: Array<{
   description: string
   icon: ReactNode
 }> = [
-  {
-    id: "dashboard",
-    label: "대시보드",
-    description: "Notion 회의록 현황",
-    icon: <BarChart3 className="size-4" />,
-  },
-  {
-    id: "analysis",
-    label: "회의 분석",
-    description: "텍스트와 음성 입력",
-    icon: <Sparkles className="size-4" />,
-  },
-  {
-    id: "records",
-    label: "회의 기록",
-    description: "Notion 저장 목록",
-    icon: <FileText className="size-4" />,
-  },
-  {
-    id: "archive",
-    label: "지식 아카이브",
-    description: "태그 기반 지식",
-    icon: <Archive className="size-4" />,
-  },
-]
+    {
+      id: "dashboard",
+      label: "대시보드",
+      description: "Notion 회의록 현황",
+      icon: <BarChart3 className="size-4" />,
+    },
+    {
+      id: "analysis",
+      label: "회의 분석",
+      description: "텍스트와 음성 입력",
+      icon: <Sparkles className="size-4" />,
+    },
+    {
+      id: "records",
+      label: "회의 기록",
+      description: "Notion 저장 목록",
+      icon: <FileText className="size-4" />,
+    },
+    {
+      id: "archive",
+      label: "지식 아카이브",
+      description: "태그 기반 지식",
+      icon: <Archive className="size-4" />,
+    },
+  ]
 
 export function MeetingWorkspace() {
   const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme())
   const [authUser, setAuthUser] = useState<AuthUser | null>(() =>
     getStoredUser()
   )
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(240)
+  const [isResizing, setIsResizing] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const isSidebarCollapsed = sidebarWidth <= 120
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarWidth((w) => (w <= 120 ? 240 : 80))
+  }, [])
+
+  const startResizing = useCallback((e: React.MouseEvent) => {
+    setIsResizing(true)
+    document.body.classList.add("resizing")
+    e.preventDefault()
+  }, [])
+
+  useEffect(() => {
+    if (!isResizing) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      let newWidth = e.clientX - 24
+      const MIN_WIDTH = 80
+      const MAX_WIDTH = 300
+
+      if (newWidth < MIN_WIDTH) newWidth = MIN_WIDTH
+      if (newWidth > MAX_WIDTH) newWidth = MAX_WIDTH
+
+      setSidebarWidth(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      document.body.classList.remove("resizing")
+    }
+
+    document.addEventListener("mousemove", handleMouseMove)
+    document.addEventListener("mouseup", handleMouseUp)
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove)
+      document.removeEventListener("mouseup", handleMouseUp)
+    }
+  }, [isResizing])
   const [activeView, setActiveView] = useState<WorkspaceView>("analysis")
   const [activeTab, setActiveTab] = useState<"text" | "voice">("text")
   const [meetingText, setMeetingText] = useState("")
@@ -339,93 +383,146 @@ export function MeetingWorkspace() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950 transition-colors dark:bg-slate-950 dark:text-slate-50">
+    <main className={`min-h-screen text-slate-950 transition-colors dark:text-slate-50 ${styles.workspaceContainer}`}>
       <div className="flex min-h-screen">
         <aside
-          className={`hidden shrink-0 border-r border-slate-200 bg-white/90 px-4 py-6 shadow-[16px_0_50px_rgba(15,23,42,0.04)] backdrop-blur transition-[width] duration-200 dark:border-slate-800 dark:bg-slate-950/90 lg:flex lg:flex-col ${
-            isSidebarCollapsed ? "w-20" : "w-64"
-          }`}
+          className={`hidden lg:flex lg:flex-col ${styles.sidebar}`}
+          style={{ width: `${sidebarWidth}px` }}
         >
           <div
-            className={`flex items-center ${
-              isSidebarCollapsed ? "justify-center" : "justify-between gap-3"
-            }`}
-          >
-            {!isSidebarCollapsed && (
-              <Image
-                src="/AMA_logo_nobg2.png"
-                alt="AMA"
-                width={180}
-                height={72}
-                className="object-contain object-left"
-                style={{ width: "11rem", height: "auto" }}
-                priority
-              />
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsSidebarCollapsed((value) => !value)}
-              aria-label={isSidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
-              title={isSidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
-            >
-              {isSidebarCollapsed ? (
-                <PanelLeftOpen className="size-4" />
+            className={`${styles.handle} ${isResizing ? styles.handleActive : ""}`}
+            onMouseDown={startResizing}
+            onDoubleClick={toggleSidebar}
+          />
+          <div className={styles.sidebarInner}>
+            <div className={styles.sidebarHeader} style={{ justifyContent: isSidebarCollapsed ? "center" : "space-between" }}>
+              {!isSidebarCollapsed ? (
+                <>
+                  <Image
+                    src="/AMA_logo_nobg2.png"
+                    alt="AMA"
+                    width={180}
+                    height={72}
+                    className="object-contain object-left"
+                    style={{ width: "11rem", height: "auto" }}
+                    priority
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={toggleSidebar}
+                    aria-label="사이드바 접기"
+                    title="사이드바 접기"
+                  >
+                    <ChevronsLeft className="size-4" />
+                  </Button>
+                </>
               ) : (
-                <PanelLeftClose className="size-4" />
+                <button
+                  type="button"
+                  onClick={toggleSidebar}
+                  aria-label="사이드바 펼치기"
+                  title="사이드바 펼치기"
+                  className={styles.logoToggleButton}
+                >
+                  <Image
+                    src="/AMA_icon_nobg.png"
+                    alt="AMA"
+                    width={24}
+                    height={24}
+                    className={styles.logoIconDefault}
+                    priority
+                  />
+                  <ChevronsRight className={styles.logoIconHover} />
+                </button>
               )}
-            </Button>
-          </div>
+            </div>
 
-          <nav className="mt-10 space-y-2">
-            {sidebarItems.map((item) => (
+            <nav className={styles.sidebarNav}>
+              {sidebarItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveView(item.id)}
+                  title={item.label}
+                  className={`${styles.sidebarButton} ${activeView === item.id ? styles.sidebarButtonActive : ""
+                    }`}
+                  style={{
+                    justifyContent: isSidebarCollapsed ? "center" : "flex-start",
+                    padding: isSidebarCollapsed ? "0" : "0 16px"
+                  }}
+                >
+                  <span className={styles.sidebarButtonIcon}>{item.icon}</span>
+                  {!isSidebarCollapsed && (
+                    <span className={styles.sidebarButtonText}>{item.label}</span>
+                  )}
+                </button>
+              ))}
+            </nav>
+
+            <div className={styles.sidebarMetrics} style={{ padding: isSidebarCollapsed ? "10px" : "14px" }}>
+              <div className="space-y-3 text-sm">
+                <Metric
+                  icon={<Mic className="size-4" />}
+                  label="마이크"
+                  value={
+                    recorder.isRecording
+                      ? "녹음 중"
+                      : isTranscribing
+                        ? "전사 중"
+                        : getPermissionLabel(recorder.permissionState)
+                  }
+                  compact={isSidebarCollapsed}
+                />
+                <Metric
+                  icon={<Network className="size-4" />}
+                  label="n8n"
+                  value={isN8nSending ? "전송 중" : summary ? "완료" : "대기"}
+                  compact={isSidebarCollapsed}
+                />
+              </div>
+            </div>
+
+            <div className={styles.sidebarDivider} />
+
+            <div className={styles.sidebarFooter}>
               <button
-                key={item.id}
                 type="button"
-                onClick={() => setActiveView(item.id)}
-                title={item.label}
-                className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition-all ${
-                  isSidebarCollapsed ? "justify-center px-0" : ""
-                } ${
-                  activeView === item.id
-                    ? "bg-blue-50 text-blue-700 shadow-sm dark:bg-blue-500/15 dark:text-blue-300"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100"
-                }`}
+                onClick={() => setShowProfileModal(true)}
+                title="내정보"
+                className={`${styles.sidebarButton} ${showProfileModal ? styles.sidebarButtonActive : ""}`}
+                style={{
+                  justifyContent: isSidebarCollapsed ? "center" : "flex-start",
+                  padding: isSidebarCollapsed ? "0" : "0 16px"
+                }}
               >
-                {item.icon}
-                {!isSidebarCollapsed && <span>{item.label}</span>}
+                <span className={styles.sidebarButtonIcon}><User className="size-4" /></span>
+                {!isSidebarCollapsed && (
+                  <span className={styles.sidebarButtonText}>내정보</span>
+                )}
               </button>
-            ))}
-          </nav>
 
-          <Card className="mt-auto border-slate-200 bg-slate-50/80 shadow-none dark:border-slate-800 dark:bg-slate-900/70">
-            <CardContent
-              className={`space-y-3 text-sm ${isSidebarCollapsed ? "px-2" : ""}`}
-            >
-              <Metric
-                icon={<Mic className="size-4" />}
-                label="마이크"
-                value={
-                  recorder.isRecording
-                    ? "녹음 중"
-                    : isTranscribing
-                      ? "전사 중"
-                      : getPermissionLabel(recorder.permissionState)
-                }
-                compact={isSidebarCollapsed}
-              />
-              <Metric
-                icon={<Network className="size-4" />}
-                label="n8n"
-                value={isN8nSending ? "전송 중" : summary ? "완료" : "대기"}
-                compact={isSidebarCollapsed}
-              />
-            </CardContent>
-          </Card>
+              <button
+                type="button"
+                onClick={handleLogout}
+                title="로그아웃"
+                className={`${styles.sidebarButton} ${styles.sidebarLogoutButton}`}
+                style={{
+                  justifyContent: isSidebarCollapsed ? "center" : "flex-start",
+                  padding: isSidebarCollapsed ? "0" : "0 16px"
+                }}
+              >
+                <span className={styles.sidebarButtonIcon}><LogOut className="size-4" /></span>
+                {!isSidebarCollapsed && (
+                  <span className={styles.sidebarButtonText}>로그아웃</span>
+                )}
+              </button>
+            </div>
+          </div>
         </aside>
 
-        <section className="flex min-w-0 flex-1 flex-col">
-          <header className="border-b border-slate-200 bg-white/80 px-5 py-5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80 md:px-8">
+        <section className={`flex min-w-0 flex-1 flex-col ${styles.contentCard}`}>
+          <header className="border-b border-slate-200/40 bg-white/10 px-5 py-5 dark:border-slate-800/40 dark:bg-slate-950/10 md:px-8">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <h1 className="text-2xl font-black tracking-tight md:text-3xl">
@@ -436,20 +533,12 @@ export function MeetingWorkspace() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <ThemeToggle theme={theme} onToggle={toggleTheme} />
-                <div className="flex items-center gap-3 rounded-full bg-slate-100 px-4 py-2 dark:bg-slate-900">
-                  <User className="size-4 text-slate-500 dark:text-slate-400" />
-                  <div className="hidden text-right sm:block">
-                    <p className="text-sm font-bold">{authUser.name}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {authUser.email}
-                    </p>
-                  </div>
-                </div>
-                <Button variant="outline" onClick={handleLogout}>
-                  <LogOut className="mr-1 size-4" />
-                  로그아웃
+              <div className="flex flex-wrap items-center gap-2 lg:hidden">
+                <Button variant="outline" size="sm" onClick={() => setShowProfileModal(true)} title="내정보">
+                  <User className="size-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleLogout} className="text-red-500 border-red-200/30 hover:bg-red-50 dark:hover:bg-red-950/30" title="로그아웃">
+                  <LogOut className="size-4" />
                 </Button>
               </div>
             </div>
@@ -460,11 +549,10 @@ export function MeetingWorkspace() {
                   key={item.id}
                   type="button"
                   onClick={() => setActiveView(item.id)}
-                  className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${
-                    activeView === item.id
-                      ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/15 dark:text-blue-300"
-                      : "border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
-                  }`}
+                  className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${activeView === item.id
+                    ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/15 dark:text-blue-300"
+                    : "border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+                    }`}
                 >
                   {item.icon}
                   {item.label}
@@ -473,52 +561,131 @@ export function MeetingWorkspace() {
             </nav>
           </header>
 
-          {activeView === "dashboard" && (
-            <DashboardView
-              records={records}
-              isLoading={isRecordsLoading}
-              error={recordsError}
-              onRefresh={loadNotionRecords}
-            />
-          )}
+          <div className="flex-1 overflow-y-auto">
+            {activeView === "dashboard" && (
+              <DashboardView
+                records={records}
+                isLoading={isRecordsLoading}
+                error={recordsError}
+                onRefresh={loadNotionRecords}
+              />
+            )}
 
-          {activeView === "analysis" && (
-            <AnalysisView
-              activeTab={activeTab}
-              error={error}
-              formatTime={formatTime}
-              handleAnalyze={handleAnalyze}
-              handleReset={handleReset}
-              isAnalyzing={isAnalyzing}
-              isN8nSending={isN8nSending}
-              isTranscribing={isTranscribing}
-              meetingText={meetingText}
-              recorder={recorder}
-              setActiveTab={setActiveTab}
-              setMeetingText={setMeetingText}
-              successMessage={successMessage}
-              summary={summary}
-            />
-          )}
+            {activeView === "analysis" && (
+              <AnalysisView
+                activeTab={activeTab}
+                error={error}
+                formatTime={formatTime}
+                handleAnalyze={handleAnalyze}
+                handleReset={handleReset}
+                isAnalyzing={isAnalyzing}
+                isN8nSending={isN8nSending}
+                isTranscribing={isTranscribing}
+                meetingText={meetingText}
+                recorder={recorder}
+                setActiveTab={setActiveTab}
+                setMeetingText={setMeetingText}
+                successMessage={successMessage}
+                summary={summary}
+              />
+            )}
 
-          {activeView === "records" && (
-            <RecordsView
-              records={records}
-              isLoading={isRecordsLoading}
-              error={recordsError}
-              onRefresh={loadNotionRecords}
-            />
-          )}
+            {activeView === "records" && (
+              <RecordsView
+                records={records}
+                isLoading={isRecordsLoading}
+                error={recordsError}
+                onRefresh={loadNotionRecords}
+              />
+            )}
 
-          {activeView === "archive" && (
-            <KnowledgeArchiveView
-              records={records}
-              isLoading={isRecordsLoading}
-              error={recordsError}
-              onRefresh={loadNotionRecords}
-            />
-          )}
+            {activeView === "archive" && (
+              <KnowledgeArchiveView
+                records={records}
+                isLoading={isRecordsLoading}
+                error={recordsError}
+                onRefresh={loadNotionRecords}
+              />
+            )}
+          </div>
         </section>
+      </div>
+      {showProfileModal && authUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/20 backdrop-blur-md transition-opacity duration-300">
+          <div
+            className="relative w-full max-w-md overflow-hidden rounded-3xl bg-white/60 p-6 shadow-2xl backdrop-blur-2xl dark:bg-slate-900/60 border border-white/20 dark:border-white/5"
+            style={{
+              background: theme === "light"
+                ? "linear-gradient(135deg, rgba(255, 255, 255, 0.7) 0%, rgba(245, 224, 255, 0.6) 50%, rgba(255, 243, 209, 0.5) 100%)"
+                : "linear-gradient(135deg, rgba(22, 20, 33, 0.85) 0%, rgba(10, 10, 18, 0.9) 100%)",
+            }}
+          >
+            {theme === "light" && (
+              <div
+                className="absolute inset-0 pointer-events-none rounded-3xl"
+                style={{
+                  border: "1px solid transparent",
+                  background: "linear-gradient(135deg, rgba(34, 211, 238, 0.45) 0%, rgba(168, 85, 247, 0.3) 50%, rgba(245, 158, 11, 0.2) 100%)",
+                  WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+                  WebkitMaskComposite: "xor",
+                  maskComposite: "exclude",
+                  padding: "1px"
+                }}
+              />
+            )}
+
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200/40 dark:border-slate-800/40">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <User className="size-5 text-indigo-500" />
+                내 정보
+              </h2>
+              <button
+                onClick={() => setShowProfileModal(false)}
+                className="rounded-full p-1.5 hover:bg-slate-200/40 dark:hover:bg-slate-800/40 transition-colors"
+                title="닫기"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="py-6 space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="flex size-14 items-center justify-center rounded-2xl bg-indigo-500/10 text-indigo-600 dark:bg-indigo-400/10 dark:text-indigo-400 font-bold text-xl">
+                  {authUser.name.substring(0, 2)}
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg">{authUser.name}</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">{authUser.email}</p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-white/40 p-4 dark:bg-slate-950/20 border border-slate-200/20 dark:border-slate-800/20 space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">계정 유형</span>
+                  <span className="font-semibold text-indigo-600 dark:text-indigo-400">임시 테스트 계정</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">상태</span>
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">활성화됨</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">권한</span>
+                  <span className="font-semibold">마이크, Notion, n8n 연동</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-4 border-top border-slate-200/40 dark:border-slate-800/40">
+              <Button onClick={() => setShowProfileModal(false)} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-2xl">
+                확인
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={styles.themeToggleWrapper} style={{ position: "fixed" }}>
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
       </div>
     </main>
   )
@@ -533,9 +700,15 @@ function LoginScreen({
   theme: ThemeMode
   onToggleTheme: () => void
 }) {
+  const [isSignUp, setIsSignUp] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
+
+  // Sign Up fields
+  const [signUpEmail, setSignUpEmail] = useState("")
+  const [signUpPassword, setSignUpPassword] = useState("")
+  const [signUpError, setSignUpError] = useState<string | null>(null)
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -565,90 +738,159 @@ function LoginScreen({
     })
   }
 
+  function handleSignUpSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const trimmedEmail = signUpEmail.trim()
+    if (!trimmedEmail || !signUpPassword.trim()) {
+      setSignUpError("이메일과 비밀번호를 입력해주세요.")
+      return
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setSignUpError("올바른 이메일 형식을 입력해주세요.")
+      return
+    }
+
+    // Simulate successful sign up
+    alert("회원가입이 완료되었습니다! 가입하신 이메일과 임시 테스트 비밀번호(ama1234!)로 테스트 로그인이 가능합니다.")
+
+    // Set email and switch to login
+    setEmail(trimmedEmail)
+    setIsSignUp(false)
+    setSignUpError(null)
+  }
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-5 text-slate-950 transition-colors dark:bg-slate-950 dark:text-slate-50">
-      <div className="absolute right-5 top-5">
+    <main className={styles.container}>
+      <div className={styles.themeToggleWrapper}>
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>
-      <Card className="w-full max-w-md border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900">
-        <CardHeader className="space-y-5">
-          <Image
+      <img src="/blob.svg" className={styles.blob} alt="" />
+      <div className={styles.orbit}></div>
+
+      {!isSignUp ? (
+        <div className={`${styles.authCard} ${styles.loginCard}`}>
+          <img
             src="/AMA_logo_nobg2.png"
             alt="AMA"
-            width={220}
-            height={88}
-            className="object-contain object-left"
-            style={{ width: "14rem", height: "auto" }}
-            priority
+            className={styles.logo}
           />
-          <div>
-            <CardTitle className="text-2xl font-black tracking-tight">
-              로그인
-            </CardTitle>
-            <CardDescription>
-              회의 분석과 Notion 아카이브에 접근하려면 로그인하세요.
-            </CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
-            <p className="font-black">임시 테스트 계정</p>
-            <p className="mt-1 font-medium">
+          <div className={styles.testAccount}>
+            <p className={styles.testAccountTitle}>임시 테스트 계정</p>
+            <p className={styles.testAccountText}>
               이메일: {TEST_LOGIN_ACCOUNT.email}
             </p>
-            <p className="font-medium">
+            <p className={styles.testAccountText}>
               비밀번호: {TEST_LOGIN_ACCOUNT.password}
             </p>
           </div>
 
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <label className="block">
-              <span className="mb-2 flex items-center gap-2 text-sm font-bold">
-                <Mail className="size-4 text-blue-600" />
-                이메일
-              </span>
+          <form className={styles.form} onSubmit={handleSubmit}>
+            <div className={styles.textbox}>
               <input
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 type="email"
+                required
+                placeholder=" "
                 autoComplete="email"
-                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-blue-500/20"
-                placeholder={TEST_LOGIN_ACCOUNT.email}
               />
-            </label>
+              <label>이메일</label>
+            </div>
 
-            <label className="block">
-              <span className="mb-2 flex items-center gap-2 text-sm font-bold">
-                <Lock className="size-4 text-blue-600" />
-                비밀번호
-              </span>
+            <div className={styles.textbox}>
               <input
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 type="password"
+                required
+                placeholder=" "
                 autoComplete="current-password"
-                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-blue-500/20"
-                placeholder="비밀번호"
               />
-            </label>
+              <label>비밀번호</label>
+            </div>
 
-            {error && (
-              <Alert className="border-red-200 bg-red-50 text-red-900 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
-                <AlertTriangle className="size-4" />
-                <AlertTitle>로그인 실패</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+            {error && <div className={styles.alert}>{error}</div>}
 
-            <Button
+            <button
               type="submit"
-              className="h-11 w-full bg-blue-600 text-white hover:bg-blue-700"
+              className={styles.submitBtn}
             >
               로그인
-            </Button>
+            </button>
           </form>
-        </CardContent>
-      </Card>
+          <a className={styles.forgotLink}>Forgot password?</a>
+          <p className={styles.footer}>
+            Don't have an account? <a onClick={() => { setIsSignUp(true); setError(null); }}>Register!</a>
+          </p>
+        </div>
+      ) : (
+        <div className={`${styles.authCard} ${styles.signupCard}`}>
+          <div className={styles.hero}>
+            <div className={styles.heroInner}>
+              <h4>Join AMA today</h4>
+              <p>Analyze your meetings and build your knowledge archive instantly.</p>
+            </div>
+          </div>
+          <form className={styles.signupForm} onSubmit={handleSignUpSubmit}>
+            <div className={styles.signupHeader}>
+              <h2>Create an account</h2>
+              <h3>Use your email and password</h3>
+            </div>
+
+            <div className={styles.textbox}>
+              <input
+                value={signUpEmail}
+                onChange={(event) => setSignUpEmail(event.target.value)}
+                type="email"
+                required
+                placeholder=" "
+                autoComplete="email"
+              />
+              <label>이메일</label>
+            </div>
+
+            <div className={styles.textbox}>
+              <input
+                value={signUpPassword}
+                onChange={(event) => setSignUpPassword(event.target.value)}
+                type="password"
+                required
+                placeholder=" "
+                autoComplete="new-password"
+              />
+              <label>비밀번호</label>
+            </div>
+
+            {signUpError && <div className={styles.alert}>{signUpError}</div>}
+
+            <button
+              type="submit"
+              className={styles.submitBtn}
+            >
+              Sign up
+            </button>
+
+            <span className={styles.or}></span>
+
+            <div className={styles.socials}>
+              <button type="button" className={styles.socialBtn}>
+                <img src="/google.svg" alt="Google" />
+                <p>Google</p>
+              </button>
+              <button type="button" className={styles.socialBtn}>
+                <img src="/apple.svg" alt="Apple" />
+                <p>Apple</p>
+              </button>
+            </div>
+
+            <p className={styles.footer}>
+              Already have an account? <a onClick={() => { setIsSignUp(false); setSignUpError(null); }}>Login!</a>
+            </p>
+          </form>
+        </div>
+      )}
     </main>
   )
 }
@@ -711,7 +953,7 @@ function AnalysisView({
   return (
     <div className="grid gap-6 p-5 md:p-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
       <section className="space-y-6">
-        <Card className="overflow-hidden border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="overflow-hidden border-slate-200 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/85 backdrop-blur-md">
           <CardHeader>
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -733,22 +975,20 @@ function AnalysisView({
               <button
                 type="button"
                 onClick={() => setActiveTab("text")}
-                className={`flex-1 rounded-xl py-2 text-sm font-semibold transition-all ${
-                  activeTab === "text"
-                    ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-50"
-                    : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-                }`}
+                className={`flex-1 rounded-xl py-2 text-sm font-semibold transition-all ${activeTab === "text"
+                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-50"
+                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                  }`}
               >
                 텍스트 입력
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab("voice")}
-                className={`flex-1 rounded-xl py-2 text-sm font-semibold transition-all ${
-                  activeTab === "voice"
-                    ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-50"
-                    : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-                }`}
+                className={`flex-1 rounded-xl py-2 text-sm font-semibold transition-all ${activeTab === "voice"
+                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-50"
+                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                  }`}
               >
                 실시간 음성 녹음
               </button>
@@ -763,7 +1003,7 @@ function AnalysisView({
               />
             ) : (
               <div className="space-y-4">
-                <div className="flex flex-col items-center justify-center space-y-4 rounded-2xl border border-slate-100 bg-slate-50/50 p-8 dark:border-slate-800 dark:bg-slate-950/60">
+                <div className="flex flex-col items-center justify-center space-y-4 rounded-2xl border border-slate-100 bg-slate-50/50 p-8 dark:border-zinc-700/60 dark:bg-zinc-900/60">
                   {recorder.isRecording ? (
                     <div className="flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600">
                       <span className="size-2 rounded-full bg-red-500" />
@@ -883,7 +1123,7 @@ function AnalysisView({
           </Alert>
         )}
 
-        <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="border-slate-200 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/85 backdrop-blur-md">
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -896,7 +1136,7 @@ function AnalysisView({
                 </CardDescription>
               </div>
               {isN8nSending && (
-                <Badge className="flex items-center gap-1 border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">
+                <Badge className="flex items-center gap-1 border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50 dark:border-zinc-800/60 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700">
                   <Loader2 className="size-3 animate-spin text-blue-600" />
                   n8n 자동 동기화 중
                 </Badge>
@@ -941,7 +1181,7 @@ function DashboardView({
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-        <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="border-slate-200 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/85 backdrop-blur-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileText className="size-5 text-blue-600" />
@@ -957,7 +1197,7 @@ function DashboardView({
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="border-slate-200 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/85 backdrop-blur-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Tags className="size-5 text-blue-600" />
@@ -968,7 +1208,7 @@ function DashboardView({
           <CardContent>
             <div className="flex flex-wrap gap-2">
               {tagCounts.slice(0, 12).map(({ tag, count }) => (
-                <Badge key={tag} className="bg-blue-50 text-blue-700 hover:bg-blue-50">
+                <Badge key={tag} className="bg-blue-50 text-blue-700 hover:bg-blue-50 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700/50 dark:hover:bg-zinc-750">
                   #{tag} {count}
                 </Badge>
               ))}
@@ -989,7 +1229,7 @@ function RecordsView({ records, isLoading, error, onRefresh }: NotionViewProps) 
   return (
     <div className="space-y-6 p-5 md:p-8">
       <NotionStateBanner error={error} isLoading={isLoading} onRefresh={onRefresh} />
-      <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="border-slate-200 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/85 backdrop-blur-md">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FolderOpen className="size-5 text-blue-600" />
@@ -1024,7 +1264,7 @@ function KnowledgeArchiveView({
 
       <div className="grid gap-4 lg:grid-cols-2">
         {groupedRecords.map(({ tag, items }) => (
-          <Card key={tag} className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <Card key={tag} className="border-slate-200 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/85 backdrop-blur-md">
             <CardHeader>
               <CardTitle className="flex items-center justify-between gap-3">
                 <span className="flex items-center gap-2">
@@ -1041,7 +1281,7 @@ function KnowledgeArchiveView({
               {items.slice(0, 5).map((record) => (
                 <div
                   key={record.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-950/60"
+                  className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 dark:border-zinc-700/60 dark:bg-zinc-900/60"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <h3 className="font-black tracking-tight">{record.title}</h3>
@@ -1060,7 +1300,7 @@ function KnowledgeArchiveView({
       </div>
 
       {!isLoading && groupedRecords.length === 0 && (
-        <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="border-slate-200 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/85 backdrop-blur-md">
           <CardContent className="py-10">
             <EmptyNotionRecords />
           </CardContent>
@@ -1087,9 +1327,21 @@ function NotionStateBanner({
   onRefresh: () => void
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
+    <div
+      className={`flex flex-col gap-3 rounded-2xl border px-4 py-3 shadow-sm backdrop-blur-md sm:flex-row sm:items-center sm:justify-between ${
+        error
+          ? "border-red-200 bg-red-50/70 text-red-900 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200"
+          : "border-slate-200 bg-white dark:border-zinc-700/80 dark:bg-zinc-800/85"
+      }`}
+    >
       <div className="flex items-center gap-3">
-        <span className="flex size-9 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300">
+        <span
+          className={`flex size-9 items-center justify-center rounded-full ${
+            error
+              ? "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-300"
+              : "bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300"
+          }`}
+        >
           {isLoading ? (
             <Loader2 className="size-4 animate-spin" />
           ) : error ? (
@@ -1122,7 +1374,7 @@ function NotionStateBanner({
 function SummaryPreview({ summary }: { summary: MeetingSummary }) {
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-zinc-700/60 dark:bg-zinc-900/60">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
           Meeting Title
         </p>
@@ -1137,7 +1389,7 @@ function SummaryPreview({ summary }: { summary: MeetingSummary }) {
         <div className="mt-3 flex flex-wrap gap-2">
           {summary.tags.length > 0 ? (
             summary.tags.map((tag) => (
-              <Badge key={tag} className="bg-blue-50 text-blue-700 hover:bg-blue-50/80">
+              <Badge key={tag} className="bg-blue-50 text-blue-700 hover:bg-blue-50/80 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700/50 dark:hover:bg-zinc-750">
                 #{tag}
               </Badge>
             ))
@@ -1162,7 +1414,7 @@ function SummaryPreview({ summary }: { summary: MeetingSummary }) {
             summary.actionItems.map((item) => (
               <div
                 key={`${item.task}-${item.owner ?? "none"}`}
-                className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 transition-all hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/60"
+                className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 transition-all hover:border-zinc-600 dark:border-zinc-700/60 dark:bg-zinc-900/60"
               >
                 <p className="font-semibold">{item.task}</p>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
@@ -1182,7 +1434,7 @@ function SummaryPreview({ summary }: { summary: MeetingSummary }) {
 
 function EmptyPreview() {
   return (
-    <div className="flex min-h-96 flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-slate-50/70 p-8 text-center dark:border-slate-700 dark:bg-slate-950/60">
+    <div className="flex min-h-96 flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-700 bg-slate-50/70 p-8 text-center dark:border-zinc-700/60 dark:bg-zinc-900/60">
       <div className="flex size-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300">
         <Sparkles className="size-7 animate-pulse" />
       </div>
@@ -1222,7 +1474,7 @@ function RecordCard({
   compact?: boolean
 }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+    <article className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 dark:border-zinc-700/60 dark:bg-zinc-900/60">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -1245,21 +1497,20 @@ function RecordCard({
         </div>
         <div className="flex flex-wrap gap-2">
           {record.tags.slice(0, compact ? 3 : 8).map((tag) => (
-            <Badge key={tag} className="bg-blue-50 text-blue-700 hover:bg-blue-50">
+            <Badge key={tag} className="bg-blue-50 text-blue-700 hover:bg-blue-50 dark:bg-zinc-800 dark:text-zinc-200 dark:border-zinc-700/50 dark:hover:bg-zinc-750">
               #{tag}
             </Badge>
           ))}
         </div>
       </div>
       <p
-        className={`mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400 ${
-          compact ? "line-clamp-2" : ""
-        }`}
+        className={`mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400 ${compact ? "line-clamp-2" : ""
+          }`}
       >
         {record.summary || "요약 정보가 없습니다."}
       </p>
       {!compact && record.actionItems && record.actionItems.length > 0 && (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-zinc-700/80 dark:bg-zinc-900/50">
           <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
             Action Items
           </p>
@@ -1276,8 +1527,8 @@ function RecordCard({
 
 function EmptyNotionRecords() {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 p-8 text-center dark:border-slate-700 dark:bg-slate-950/60">
-      <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm dark:bg-slate-900 dark:text-blue-300">
+    <div className="rounded-2xl border border-dashed border-zinc-700 bg-slate-50/80 p-8 text-center dark:border-zinc-700/60 dark:bg-zinc-900/60">
+      <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm dark:bg-zinc-850/60 dark:text-blue-300">
         <Database className="size-6" />
       </div>
       <h3 className="mt-4 text-base font-black">Notion 회의록이 아직 없습니다</h3>
@@ -1298,7 +1549,7 @@ function StatCard({
   value: string
 }) {
   return (
-    <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <Card className="border-slate-200 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-800/85 backdrop-blur-md">
       <CardContent className="flex items-center justify-between gap-4 p-5">
         <div>
           <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
@@ -1323,7 +1574,7 @@ function ListSection({ title, items }: { title: string; items: string[] }) {
           items.map((item) => (
             <li
               key={item}
-              className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
+              className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300"
             >
               {item}
             </li>
@@ -1358,9 +1609,8 @@ function Metric({
 }) {
   return (
     <div
-      className={`flex items-center gap-3 ${
-        compact ? "justify-center" : "justify-between"
-      }`}
+      className={`flex items-center gap-3 ${compact ? "justify-center" : "justify-between"
+        }`}
       title={`${label}: ${value}`}
     >
       <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
@@ -1434,7 +1684,7 @@ function getPermissionNotice(state: MicrophonePermissionState) {
       description:
         "Chrome, Edge 등 MediaRecorder와 마이크 권한을 지원하는 브라우저에서 다시 시도해 주세요.",
       icon: <AlertTriangle className="mt-0.5 size-4 text-red-600" />,
-      className: "border-red-200 bg-red-50 text-red-900",
+      className: "border-red-200 bg-red-50 text-red-900 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200",
     }
   }
 
@@ -1444,7 +1694,7 @@ function getPermissionNotice(state: MicrophonePermissionState) {
       description:
         "브라우저 주소창의 권한 설정에서 마이크를 허용한 뒤 다시 녹음 시작을 눌러 주세요.",
       icon: <AlertTriangle className="mt-0.5 size-4 text-red-600" />,
-      className: "border-red-200 bg-red-50 text-red-900",
+      className: "border-red-200 bg-red-50 text-red-900 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200",
     }
   }
 
@@ -1454,7 +1704,7 @@ function getPermissionNotice(state: MicrophonePermissionState) {
       description:
         "녹음 시작을 누르면 회의 음성을 캡처하고 종료 후 자동 전사를 진행합니다.",
       icon: <ShieldCheck className="mt-0.5 size-4 text-emerald-600" />,
-      className: "border-emerald-200 bg-emerald-50 text-emerald-900",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200",
     }
   }
 
@@ -1463,7 +1713,7 @@ function getPermissionNotice(state: MicrophonePermissionState) {
       title: "마이크 권한을 확인하고 있습니다",
       description: "브라우저 권한 팝업이 보이면 마이크 사용을 허용해 주세요.",
       icon: <Loader2 className="mt-0.5 size-4 animate-spin text-blue-600" />,
-      className: "border-blue-200 bg-blue-50 text-blue-900",
+      className: "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200",
     }
   }
 
@@ -1472,7 +1722,7 @@ function getPermissionNotice(state: MicrophonePermissionState) {
     description:
       "녹음 시작을 누른 뒤 브라우저 권한 팝업에서 마이크 사용을 허용해 주세요.",
     icon: <Mic className="mt-0.5 size-4 text-blue-600" />,
-    className: "border-blue-200 bg-blue-50 text-blue-900",
+    className: "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200",
   }
 }
 

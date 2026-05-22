@@ -93,4 +93,3 @@ export function convertToN8nPayload(summary: MeetingSummary, transcriptText?: st
     transcript: transcriptText || "",
   }
 }
-
