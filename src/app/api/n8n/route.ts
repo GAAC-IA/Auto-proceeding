@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const { summary, transcriptText } = body
+    const { summary } = body
 
     if (!summary || typeof summary !== "object") {
       return Response.json(
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const mappedPayload = convertToN8nPayload(parsed.data, transcriptText)
+    const mappedPayload = convertToN8nPayload(parsed.data)
     const payload = {
       ...mappedPayload,
       syncedAt: new Date().toISOString(),
