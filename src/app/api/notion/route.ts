@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const records = await fetchNotionMeetingRecords()
+    const records = await fetchNotionMeetingRecords({ userId: auth.userId })
     return Response.json({ records })
   } catch (error) {
     const message =

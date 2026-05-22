@@ -94,6 +94,22 @@ type AuthUser = {
   name: string
 }
 
+type NotionConnectionStatus = {
+  userId: string
+  botId: string
+  workspaceId: string | null
+  workspaceName: string | null
+  workspaceIcon: string | null
+  duplicatedTemplateId: string | null
+  notionDatabaseId: string | null
+}
+
+type NotionConnectionResponse = {
+  connection?: NotionConnectionStatus | null
+  url?: string
+  error?: string
+}
+
 const THEME_STORAGE_KEY = "ama-theme"
 
 const sidebarItems: Array<{
@@ -135,6 +151,13 @@ export function MeetingWorkspace() {
   const [sidebarWidth, setSidebarWidth] = useState(240)
   const [isResizing, setIsResizing] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const [notionConnection, setNotionConnection] =
+    useState<NotionConnectionStatus | null>(null)
+  const [notionDatabaseIdInput, setNotionDatabaseIdInput] = useState("")
+  const [isNotionConnecting, setIsNotionConnecting] = useState(false)
+  const [isNotionSaving, setIsNotionSaving] = useState(false)
+  const [notionConnectionError, setNotionConnectionError] = useState<string | null>(null)
+  const [notionConnectionNotice, setNotionConnectionNotice] = useState<string | null>(null)
   const isSidebarCollapsed = sidebarWidth <= 120
 
   const toggleSidebar = useCallback(() => {
@@ -189,6 +212,8 @@ export function MeetingWorkspace() {
 
   const activeItem =
     sidebarItems.find((item) => item.id === activeView) ?? sidebarItems[1]
+  const needsNotionOnboarding =
+    authUser !== null && (!notionConnection || !notionConnection.notionDatabaseId)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -256,6 +281,25 @@ export function MeetingWorkspace() {
     }
   }, [])
 
+  const loadNotionConnection = useCallback(async () => {
+    setNotionConnectionError(null)
+
+    try {
+      const response = await authenticatedFetch("/api/notion/connection")
+      const data = (await response.json()) as NotionConnectionResponse
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Notion 연결 상태를 불러오지 못했습니다.")
+      }
+
+      const connection = data.connection ?? null
+      setNotionConnection(connection)
+      setNotionDatabaseIdInput(connection?.notionDatabaseId ?? "")
+    } catch (requestError) {
+      setNotionConnectionError(toErrorMessage(requestError))
+    }
+  }, [])
+
   useEffect(() => {
     if (!authUser) {
       return
@@ -263,10 +307,40 @@ export function MeetingWorkspace() {
 
     const timer = setTimeout(() => {
       void loadNotionRecords()
+      void loadNotionConnection()
     }, 0)
 
     return () => clearTimeout(timer)
-  }, [authUser, loadNotionRecords])
+  }, [authUser, loadNotionConnection, loadNotionRecords])
+
+  useEffect(() => {
+    if (!isClientReady) {
+      return
+    }
+
+    const params = new URLSearchParams(window.location.search)
+    const notionStatus = params.get("notion")
+    if (!notionStatus) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      if (notionStatus === "connected") {
+        setNotionConnectionNotice("Notion 연결이 완료되었습니다. 데이터베이스 ID를 저장해주세요.")
+        setShowProfileModal(true)
+      } else if (notionStatus === "denied") {
+        setNotionConnectionError("Notion 연결이 취소되었습니다.")
+        setShowProfileModal(true)
+      } else if (notionStatus === "error") {
+        setNotionConnectionError("Notion 연결 중 오류가 발생했습니다.")
+        setShowProfileModal(true)
+      }
+    }, 0)
+
+    window.history.replaceState({}, "", window.location.pathname)
+
+    return () => window.clearTimeout(timer)
+  }, [isClientReady])
 
   const handleLogin = useCallback((user: AuthUser) => {
     setAuthUser(user)
@@ -275,6 +349,86 @@ export function MeetingWorkspace() {
   const handleLogout = useCallback(async () => {
     await supabase?.auth.signOut()
     setAuthUser(null)
+  }, [])
+
+  const handleConnectNotion = useCallback(async () => {
+    setIsNotionConnecting(true)
+    setNotionConnectionError(null)
+    setNotionConnectionNotice(null)
+
+    try {
+      const response = await authenticatedFetch("/api/notion/oauth/start", {
+        method: "POST",
+      })
+      const data = (await response.json()) as NotionConnectionResponse
+
+      if (!response.ok || !data.url) {
+        throw new Error(data.error ?? "Notion 연결을 시작하지 못했습니다.")
+      }
+
+      window.location.assign(data.url)
+    } catch (requestError) {
+      setNotionConnectionError(toErrorMessage(requestError))
+      setIsNotionConnecting(false)
+    }
+  }, [])
+
+  const handleSaveNotionDatabase = useCallback(async () => {
+    setIsNotionSaving(true)
+    setNotionConnectionError(null)
+    setNotionConnectionNotice(null)
+
+    try {
+      const response = await authenticatedFetch("/api/notion/connection", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          notionDatabaseId: notionDatabaseIdInput,
+        }),
+      })
+      const data = (await response.json()) as NotionConnectionResponse
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Notion 데이터베이스 ID를 저장하지 못했습니다.")
+      }
+
+      setNotionConnection(data.connection ?? null)
+      setNotionDatabaseIdInput(data.connection?.notionDatabaseId ?? "")
+      setNotionConnectionNotice("Notion 데이터베이스 ID를 저장했습니다.")
+      void loadNotionRecords()
+    } catch (requestError) {
+      setNotionConnectionError(toErrorMessage(requestError))
+    } finally {
+      setIsNotionSaving(false)
+    }
+  }, [loadNotionRecords, notionDatabaseIdInput])
+
+  const handleDisconnectNotion = useCallback(async () => {
+    setIsNotionSaving(true)
+    setNotionConnectionError(null)
+    setNotionConnectionNotice(null)
+
+    try {
+      const response = await authenticatedFetch("/api/notion/connection", {
+        method: "DELETE",
+      })
+      const data = (await response.json()) as NotionConnectionResponse
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Notion 연결을 해제하지 못했습니다.")
+      }
+
+      setNotionConnection(null)
+      setNotionDatabaseIdInput("")
+      setRecords([])
+      setNotionConnectionNotice("Notion 연결을 해제했습니다.")
+    } catch (requestError) {
+      setNotionConnectionError(toErrorMessage(requestError))
+    } finally {
+      setIsNotionSaving(false)
+    }
   }, [])
 
   const toggleTheme = useCallback(() => {
@@ -612,50 +766,66 @@ export function MeetingWorkspace() {
           </header>
 
           <div className="flex-1 overflow-y-auto">
-            {activeView === "dashboard" && (
-              <DashboardView
-                records={records}
-                isLoading={isRecordsLoading}
-                error={recordsError}
-                onRefresh={loadNotionRecords}
+            {needsNotionOnboarding ? (
+              <NotionOnboardingView
+                connection={notionConnection}
+                databaseId={notionDatabaseIdInput}
+                error={notionConnectionError}
+                isConnecting={isNotionConnecting}
+                isSaving={isNotionSaving}
+                notice={notionConnectionNotice}
+                onConnect={handleConnectNotion}
+                onDatabaseIdChange={setNotionDatabaseIdInput}
+                onSaveDatabase={handleSaveNotionDatabase}
               />
-            )}
+            ) : (
+              <>
+                {activeView === "dashboard" && (
+                  <DashboardView
+                    records={records}
+                    isLoading={isRecordsLoading}
+                    error={recordsError}
+                    onRefresh={loadNotionRecords}
+                  />
+                )}
 
-            {activeView === "analysis" && (
-              <AnalysisView
-                activeTab={activeTab}
-                error={error}
-                formatTime={formatTime}
-                handleAnalyze={handleAnalyze}
-                handleReset={handleReset}
-                isAnalyzing={isAnalyzing}
-                isN8nSending={isN8nSending}
-                isTranscribing={isTranscribing}
-                meetingText={meetingText}
-                recorder={recorder}
-                setActiveTab={setActiveTab}
-                setMeetingText={setMeetingText}
-                successMessage={successMessage}
-                summary={summary}
-              />
-            )}
+                {activeView === "analysis" && (
+                  <AnalysisView
+                    activeTab={activeTab}
+                    error={error}
+                    formatTime={formatTime}
+                    handleAnalyze={handleAnalyze}
+                    handleReset={handleReset}
+                    isAnalyzing={isAnalyzing}
+                    isN8nSending={isN8nSending}
+                    isTranscribing={isTranscribing}
+                    meetingText={meetingText}
+                    recorder={recorder}
+                    setActiveTab={setActiveTab}
+                    setMeetingText={setMeetingText}
+                    successMessage={successMessage}
+                    summary={summary}
+                  />
+                )}
 
-            {activeView === "records" && (
-              <RecordsView
-                records={records}
-                isLoading={isRecordsLoading}
-                error={recordsError}
-                onRefresh={loadNotionRecords}
-              />
-            )}
+                {activeView === "records" && (
+                  <RecordsView
+                    records={records}
+                    isLoading={isRecordsLoading}
+                    error={recordsError}
+                    onRefresh={loadNotionRecords}
+                  />
+                )}
 
-            {activeView === "archive" && (
-              <KnowledgeArchiveView
-                records={records}
-                isLoading={isRecordsLoading}
-                error={recordsError}
-                onRefresh={loadNotionRecords}
-              />
+                {activeView === "archive" && (
+                  <KnowledgeArchiveView
+                    records={records}
+                    isLoading={isRecordsLoading}
+                    error={recordsError}
+                    onRefresh={loadNotionRecords}
+                  />
+                )}
+              </>
             )}
           </div>
         </section>
@@ -663,7 +833,7 @@ export function MeetingWorkspace() {
       {showProfileModal && authUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/20 backdrop-blur-md transition-opacity duration-300">
           <div
-            className="relative w-full max-w-md overflow-hidden rounded-3xl bg-white/60 p-6 shadow-2xl backdrop-blur-2xl dark:bg-slate-900/60 border border-white/20 dark:border-white/5"
+            className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white/60 p-6 shadow-2xl backdrop-blur-2xl dark:bg-slate-900/60 border border-white/20 dark:border-white/5"
             style={{
               background: theme === "light"
                 ? "linear-gradient(135deg, rgba(255, 255, 255, 0.7) 0%, rgba(245, 224, 255, 0.6) 50%, rgba(255, 243, 209, 0.5) 100%)"
@@ -723,6 +893,75 @@ export function MeetingWorkspace() {
                   <span className="font-semibold">마이크, Notion, n8n 연동</span>
                 </div>
               </div>
+              <div className="rounded-2xl bg-white/40 p-4 dark:bg-slate-950/20 border border-slate-200/20 dark:border-slate-800/20 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black">Notion 연결</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {notionConnection
+                        ? notionConnection.workspaceName ?? "연결된 워크스페이스"
+                        : "내 Notion 워크스페이스를 연결하세요."}
+                    </p>
+                  </div>
+                  {notionConnection ? (
+                    <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-300">
+                      연결됨
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline">미연결</Badge>
+                  )}
+                </div>
+
+                {notionConnection ? (
+                  <>
+                    <div className={styles.textbox}>
+                      <input
+                        value={notionDatabaseIdInput}
+                        onChange={(event) => setNotionDatabaseIdInput(event.target.value)}
+                        type="text"
+                        placeholder=" "
+                        autoComplete="off"
+                      />
+                      <label>Notion 데이터베이스 ID</label>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        onClick={() => void handleSaveNotionDatabase()}
+                        disabled={isNotionSaving}
+                      >
+                        저장
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void handleDisconnectNotion()}
+                        disabled={isNotionSaving}
+                      >
+                        연결 해제
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={() => void handleConnectNotion()}
+                    disabled={isNotionConnecting}
+                    className="w-full"
+                  >
+                    {isNotionConnecting ? "연결 중..." : "Notion 연결하기"}
+                  </Button>
+                )}
+
+                {notionConnectionNotice && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs font-medium text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200">
+                    {notionConnectionNotice}
+                  </div>
+                )}
+                {notionConnectionError && (
+                  <div className={styles.alert}>{notionConnectionError}</div>
+                )}
+              </div>
             </div>
 
             <div className="flex justify-end pt-4 border-top border-slate-200/40 dark:border-slate-800/40">
@@ -738,6 +977,131 @@ export function MeetingWorkspace() {
         <ThemeToggle theme={theme} onToggle={toggleTheme} />
       </div>
     </main>
+  )
+}
+
+function NotionOnboardingView({
+  connection,
+  databaseId,
+  error,
+  isConnecting,
+  isSaving,
+  notice,
+  onConnect,
+  onDatabaseIdChange,
+  onSaveDatabase,
+}: {
+  connection: NotionConnectionStatus | null
+  databaseId: string
+  error: string | null
+  isConnecting: boolean
+  isSaving: boolean
+  notice: string | null
+  onConnect: () => void
+  onDatabaseIdChange: (value: string) => void
+  onSaveDatabase: () => void
+}) {
+  const isConnected = Boolean(connection)
+
+  return (
+    <div className="flex min-h-full items-center justify-center p-5 md:p-8">
+      <div className="w-full max-w-3xl space-y-5">
+        <div className="rounded-3xl border border-slate-200 bg-white/75 p-6 shadow-sm backdrop-blur-md dark:border-zinc-700/80 dark:bg-zinc-800/85 md:p-8">
+          <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+            <div className="space-y-3">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300">
+                <Database className="size-6" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black tracking-tight">
+                  Notion을 연결해 주세요
+                </h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  회의록 저장, 기록 조회, 지식 아카이브 검색은 사용자의 Notion
+                  워크스페이스에 연결된 데이터베이스를 사용합니다.
+                </p>
+              </div>
+            </div>
+            <Badge
+              className={
+                isConnected
+                  ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-50 dark:bg-emerald-500/15 dark:text-emerald-300"
+                  : "bg-amber-50 text-amber-700 hover:bg-amber-50 dark:bg-amber-500/15 dark:text-amber-300"
+              }
+            >
+              {isConnected ? "워크스페이스 연결됨" : "연결 필요"}
+            </Badge>
+          </div>
+
+          <div className="mt-8 grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-zinc-700/60 dark:bg-zinc-900/50">
+              <div className="flex items-center gap-2 text-sm font-black">
+                <ShieldCheck className="size-4 text-blue-600" />
+                1. 워크스페이스 권한 허용
+              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                Notion에서 AMA가 접근할 페이지나 데이터베이스를 선택합니다.
+              </p>
+              <Button
+                type="button"
+                onClick={() => void onConnect()}
+                disabled={isConnecting}
+                className="mt-4 w-full bg-blue-600 text-white hover:bg-blue-700"
+              >
+                {isConnecting ? (
+                  <Loader2 className="mr-1 size-4 animate-spin" />
+                ) : (
+                  <ExternalLink className="mr-1 size-4" />
+                )}
+                {isConnected ? "Notion 다시 연결" : "Notion 연결하기"}
+              </Button>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-zinc-700/60 dark:bg-zinc-900/50">
+              <div className="flex items-center gap-2 text-sm font-black">
+                <Database className="size-4 text-blue-600" />
+                2. 데이터베이스 ID 저장
+              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                회의록을 저장할 Notion 데이터베이스 ID를 입력합니다.
+              </p>
+              <div className={`${styles.textbox} mt-4`}>
+                <input
+                  value={databaseId}
+                  onChange={(event) => onDatabaseIdChange(event.target.value)}
+                  type="text"
+                  placeholder=" "
+                  autoComplete="off"
+                  disabled={!isConnected}
+                />
+                <label>Notion 데이터베이스 ID</label>
+              </div>
+              <Button
+                type="button"
+                onClick={() => void onSaveDatabase()}
+                disabled={!isConnected || isSaving || !databaseId.trim()}
+                className="mt-3 w-full"
+              >
+                {isSaving && <Loader2 className="mr-1 size-4 animate-spin" />}
+                데이터베이스 저장
+              </Button>
+            </div>
+          </div>
+
+          {(notice || error) && (
+            <div
+              className={`mt-5 rounded-2xl border p-4 text-sm font-medium ${
+                error
+                  ? "border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200"
+              }`}
+            >
+              {error ?? notice}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -762,6 +1126,7 @@ function LoginScreen({
   const [signUpPassword, setSignUpPassword] = useState("")
   const [signUpError, setSignUpError] = useState<string | null>(null)
   const [signUpNotice, setSignUpNotice] = useState<string | null>(null)
+  const [socialProvider, setSocialProvider] = useState<"google" | "apple" | null>(null)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -860,6 +1225,35 @@ function LoginScreen({
       setSignUpError(toErrorMessage(authError))
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  async function handleSocialSignUp(provider: "google" | "apple") {
+    setSignUpError(null)
+    setSignUpNotice(null)
+
+    if (!supabase) {
+      setSignUpError("Supabase 환경변수(NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY)를 설정해주세요.")
+      return
+    }
+
+    setSocialProvider(provider)
+
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo:
+            typeof window === "undefined" ? undefined : window.location.origin,
+        },
+      })
+
+      if (oauthError) {
+        throw oauthError
+      }
+    } catch (authError) {
+      setSocialProvider(null)
+      setSignUpError(toErrorMessage(authError))
     }
   }
 
@@ -981,13 +1375,23 @@ function LoginScreen({
             <span className={styles.or}></span>
 
             <div className={styles.socials}>
-              <button type="button" className={styles.socialBtn}>
+              <button
+                type="button"
+                className={styles.socialBtn}
+                onClick={() => void handleSocialSignUp("google")}
+                disabled={isSubmitting || socialProvider !== null}
+              >
                 <img src="/google.svg" alt="Google" />
-                <p>Google</p>
+                <p>{socialProvider === "google" ? "Connecting..." : "Google"}</p>
               </button>
-              <button type="button" className={styles.socialBtn}>
+              <button
+                type="button"
+                className={styles.socialBtn}
+                onClick={() => void handleSocialSignUp("apple")}
+                disabled={isSubmitting || socialProvider !== null}
+              >
                 <img src="/apple.svg" alt="Apple" />
-                <p>Apple</p>
+                <p>{socialProvider === "apple" ? "Connecting..." : "Apple"}</p>
               </button>
             </div>
 
@@ -1557,26 +1961,35 @@ function NotionStateBanner({
   isLoading: boolean
   onRefresh: () => void
 }) {
+  const needsNotionSetup = Boolean(
+    error?.includes("Notion 연결") || error?.includes("Notion 데이터베이스 ID")
+  )
+  const isError = Boolean(error && !needsNotionSetup)
+
   return (
     <div
       className={`flex flex-col gap-3 rounded-2xl border px-4 py-3 shadow-sm backdrop-blur-md sm:flex-row sm:items-center sm:justify-between ${
-        error
+        isError
           ? "border-red-200 bg-red-50/70 text-red-900 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200"
+          : needsNotionSetup
+            ? "border-amber-200 bg-amber-50/70 text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100"
           : "border-slate-200 bg-white dark:border-zinc-700/80 dark:bg-zinc-800/85"
       }`}
     >
       <div className="flex items-center gap-3">
         <span
           className={`flex size-9 items-center justify-center rounded-full ${
-            error
+            isError
               ? "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-300"
+              : needsNotionSetup
+                ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
               : "bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300"
           }`}
         >
           {isLoading ? (
             <Loader2 className="size-4 animate-spin" />
           ) : error ? (
-            <AlertTriangle className="size-4 text-red-600" />
+            <AlertTriangle className={`size-4 ${isError ? "text-red-600" : "text-amber-700"}`} />
           ) : (
             <Database className="size-4" />
           )}

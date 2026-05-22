@@ -1,4 +1,5 @@
 import { MeetingSummarySchema, convertToN8nPayload } from "@/lib/meeting"
+import { getNotionConnection } from "@/lib/notion-connections"
 import { requireAuthenticatedUser } from "@/lib/server-auth"
 
 export const runtime = "nodejs"
@@ -52,9 +53,32 @@ export async function POST(request: Request) {
       )
     }
 
-    const mappedPayload = convertToN8nPayload(parsed.data)
+    const notionConnection = await getNotionConnection(auth.userId)
+    if (!notionConnection) {
+      return Response.json(
+        { error: "Notion 연결이 필요합니다. 계정 정보에서 Notion을 먼저 연결해주세요." },
+        { status: 409 }
+      )
+    }
+
+    if (!notionConnection.notionDatabaseId) {
+      return Response.json(
+        { error: "Notion 데이터베이스 ID가 필요합니다. 계정 정보에서 저장해주세요." },
+        { status: 409 }
+      )
+    }
+
+    const mappedPayload = convertToN8nPayload(parsed.data, transcriptText)
+
     const payload = {
       ...mappedPayload,
+      userId: auth.userId,
+      notion: {
+        accessToken: notionConnection.accessToken,
+        databaseId: notionConnection.notionDatabaseId,
+        workspaceId: notionConnection.workspaceId,
+        workspaceName: notionConnection.workspaceName,
+      },
       syncedAt: new Date().toISOString(),
     }
 
