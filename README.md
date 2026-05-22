@@ -1,6 +1,6 @@
-# MeetAI MVP
+# AMA
 
-OpenAI와 Notion API를 사용해 회의 텍스트를 업무용 회의록으로 분석하고 Notion Database에 저장하는 Next.js MVP입니다.
+OpenAI와 Notion API를 사용해 회의 텍스트를 업무용 회의록으로 분석하고 Notion Database에 저장하는 Next.js 앱입니다.
 
 ## 주요 기능
 
