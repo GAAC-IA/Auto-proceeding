@@ -9,7 +9,7 @@ import {
 
 export const runtime = "nodejs"
 
-const OPENAI_MODEL = "gpt-5.4-mini"
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.4-mini"
 
 const ANALYZE_INSTRUCTIONS = `
 너는 업무 회의록을 작성하는 전문 어시스턴트다.

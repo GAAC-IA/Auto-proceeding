@@ -77,3 +77,20 @@ function parseJsonString(raw: string): unknown {
     throw new Error("AI 분석 결과를 JSON으로 파싱할 수 없습니다.")
   }
 }
+
+export function convertToN8nPayload(summary: MeetingSummary, transcriptText?: string) {
+  return {
+    title: summary.title || "회의록 자동 생성",
+    summary: summary.summary || "요약 정보 없음",
+    key_points: summary.keyPoints || [],
+    decisions: summary.decisions || [],
+    action_items: (summary.actionItems || []).map((item) => ({
+      assignee: item.owner || "미지정",
+      task: item.task || "",
+      due_date: item.dueDate || null,
+    })),
+    tags: summary.tags || [],
+    transcript: transcriptText || "",
+  }
+}
+
