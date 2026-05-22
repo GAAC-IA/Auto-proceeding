@@ -579,6 +579,20 @@
   box-sizing: border-box;
 }
 
+.compactHeaderActions {
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.compactNav {
+  display: none;
+  margin-top: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .contentCard::before {
   content: "";
   position: absolute;
@@ -594,6 +608,35 @@
 
 :global(.dark) .contentCard::before {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+}
+
+@media (max-width: 1180px) {
+  .sidebar {
+    display: none !important;
+  }
+
+  .contentCard {
+    width: auto;
+    min-width: 0;
+    height: calc(100vh - 32px);
+    margin: 16px;
+  }
+
+  .compactHeaderActions {
+    display: flex;
+  }
+
+  .compactNav {
+    display: grid;
+  }
+}
+
+@media (max-width: 640px) {
+  .contentCard {
+    height: 100vh;
+    margin: 0;
+    border-radius: 0;
+  }
 }
 
 /* Internal padding and structure */

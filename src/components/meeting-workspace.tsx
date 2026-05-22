@@ -737,7 +737,7 @@ export function MeetingWorkspace() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 lg:hidden">
+              <div className={styles.compactHeaderActions}>
                 <Button variant="outline" size="sm" onClick={() => setShowProfileModal(true)} title="내정보">
                   <User className="size-4" />
                 </Button>
@@ -747,7 +747,7 @@ export function MeetingWorkspace() {
               </div>
             </div>
 
-            <nav className="mt-5 grid grid-cols-2 gap-2 lg:hidden">
+            <nav className={styles.compactNav}>
               {sidebarItems.map((item) => (
                 <button
                   key={item.id}
@@ -1627,7 +1627,7 @@ function AnalysisView({
             <AlertTitle className="font-bold">
               {error ? "작업 중 오류 발생" : "작업 완료"}
             </AlertTitle>
-            <AlertDescription className="text-xs leading-relaxed">
+            <AlertDescription className="break-words text-xs leading-relaxed [overflow-wrap:anywhere]">
               {error ?? successMessage}
             </AlertDescription>
           </Alert>

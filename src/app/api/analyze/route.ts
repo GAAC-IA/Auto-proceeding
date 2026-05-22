@@ -19,6 +19,12 @@ const ANALYZE_INSTRUCTIONS = `
 markdown 코드블럭은 절대 사용하지 않는다.
 없는 담당자나 마감일은 null로 처리한다.
 액션 아이템은 실행 가능한 작업 단위로 분리한다.
+Notion API 제한을 지키기 위해 각 텍스트 블록은 2,000자를 넘기지 않는다.
+summary는 900자 이내로 작성한다.
+keyPoints는 최대 8개, 각 항목 160자 이내로 작성한다.
+decisions는 최대 6개, 각 항목 160자 이내로 작성한다.
+actionItems는 최대 8개, task는 140자 이내로 작성한다.
+tags는 최대 8개로 작성한다.
 `.trim()
 
 export async function POST(request: Request) {
