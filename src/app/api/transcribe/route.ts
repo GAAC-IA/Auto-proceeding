@@ -1,9 +1,16 @@
 import OpenAI from "openai"
 
+import { requireAuthenticatedUser } from "@/lib/server-auth"
+
 export const runtime = "nodejs"
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireAuthenticatedUser(request)
+    if (!auth.ok) {
+      return auth.response
+    }
+
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) {
       return Response.json(

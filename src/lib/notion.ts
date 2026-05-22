@@ -58,10 +58,10 @@ type NotionPageSections = {
 }
 
 const PROPERTY_NAMES = {
-  title: ["회의 제목", "Title", "title", "Name", "이름"],
+  title: ["회의 제목", "제목", "Title", "title", "Name", "이름"],
   summary: ["요약", "Summary", "summary"],
   tags: ["태그", "Tags", "tags"],
-  meetingDate: ["회의 일자", "Created At", "createdAt", "Date", "date"],
+  meetingDate: ["회의 일자", "회의 날짜", "Created At", "createdAt", "Date", "date"],
 } as const
 
 export function toNotionMeetingRecord(
@@ -70,15 +70,21 @@ export function toNotionMeetingRecord(
 ): NotionMeetingRecord {
   const notionPage = asNotionPage(page)
   const properties = notionPage.properties ?? {}
+  const mappedTags = getMultiSelectProperty(properties, PROPERTY_NAMES.tags)
 
   return {
     id: notionPage.id ?? `notion-${notionPage.created_time ?? "unknown"}`,
     title:
-      getTextProperty(properties, PROPERTY_NAMES.title) || "제목 없는 회의록",
-    summary: getTextProperty(properties, PROPERTY_NAMES.summary),
-    tags: getMultiSelectProperty(properties, PROPERTY_NAMES.tags),
+      getTextProperty(properties, PROPERTY_NAMES.title) ||
+      getFirstPropertyTextByType(properties, "title") ||
+      "제목 없는 회의록",
+    summary:
+      getTextProperty(properties, PROPERTY_NAMES.summary) ||
+      getFirstPropertyTextByType(properties, "rich_text"),
+    tags: mappedTags.length > 0 ? mappedTags : getFirstMultiSelectProperty(properties),
     meetingDate:
       getDateProperty(properties, PROPERTY_NAMES.meetingDate) ??
+      getFirstDateProperty(properties) ??
       notionPage.created_time ??
       null,
     url: notionPage.url ?? null,
@@ -148,20 +154,7 @@ function getTextProperty(
   candidates: readonly string[]
 ) {
   const property = getProperty(properties, candidates)
-
-  if (!property) {
-    return ""
-  }
-
-  if (property.type === "title") {
-    return richTextToPlainText(property.title)
-  }
-
-  if (property.type === "rich_text") {
-    return richTextToPlainText(property.rich_text)
-  }
-
-  return richTextToPlainText(property.title) || richTextToPlainText(property.rich_text)
+  return property ? propertyToPlainText(property) : ""
 }
 
 function getMultiSelectProperty(
@@ -169,11 +162,7 @@ function getMultiSelectProperty(
   candidates: readonly string[]
 ) {
   const property = getProperty(properties, candidates)
-  return (
-    property?.multi_select
-      ?.map((option) => option.name)
-      .filter((name): name is string => Boolean(name)) ?? []
-  )
+  return multiSelectToNames(property)
 }
 
 function getDateProperty(
@@ -189,6 +178,46 @@ function getProperty(
   candidates: readonly string[]
 ) {
   return candidates.map((candidate) => properties[candidate]).find(Boolean)
+}
+
+function getFirstPropertyTextByType(
+  properties: Record<string, NotionProperty>,
+  type: "title" | "rich_text"
+) {
+  const property = Object.values(properties).find((item) => item.type === type)
+  return property ? propertyToPlainText(property) : ""
+}
+
+function getFirstMultiSelectProperty(properties: Record<string, NotionProperty>) {
+  const property = Object.values(properties).find(
+    (item) => item.type === "multi_select" && item.multi_select?.length
+  )
+  return multiSelectToNames(property)
+}
+
+function getFirstDateProperty(properties: Record<string, NotionProperty>) {
+  const property = Object.values(properties).find((item) => item.type === "date")
+  return property?.date?.start ?? null
+}
+
+function propertyToPlainText(property: NotionProperty) {
+  if (property.type === "title") {
+    return richTextToPlainText(property.title)
+  }
+
+  if (property.type === "rich_text") {
+    return richTextToPlainText(property.rich_text)
+  }
+
+  return richTextToPlainText(property.title) || richTextToPlainText(property.rich_text)
+}
+
+function multiSelectToNames(property: NotionProperty | undefined) {
+  return (
+    property?.multi_select
+      ?.map((option) => option.name)
+      .filter((name): name is string => Boolean(name)) ?? []
+  )
 }
 
 function richTextToPlainText(richText: NotionRichText[] | undefined) {
@@ -232,19 +261,36 @@ function isHeadingBlock(block: NotionBlock) {
 }
 
 function getSectionFromHeading(text: string): keyof NotionPageSections | null {
-  if (text.includes("결정") && !text.includes("핵심")) {
+  const normalized = text.toLowerCase()
+
+  if (normalized.includes("decision") || normalized.includes("결정")) {
     return "decisions"
   }
 
-  if (text.includes("핵심") || text.includes("결정")) {
+  if (
+    normalized.includes("key point") ||
+    normalized.includes("discussion") ||
+    normalized.includes("핵심") ||
+    normalized.includes("논의")
+  ) {
     return "keyPoints"
   }
 
-  if (text.includes("액션") || text.includes("담당")) {
+  if (
+    normalized.includes("action") ||
+    normalized.includes("todo") ||
+    normalized.includes("액션") ||
+    normalized.includes("할 일")
+  ) {
     return "actionItems"
   }
 
-  if (text.includes("스크립트") || text.includes("대화")) {
+  if (
+    normalized.includes("transcript") ||
+    normalized.includes("script") ||
+    normalized.includes("전사") ||
+    normalized.includes("원문")
+  ) {
     return "transcript"
   }
 
@@ -254,7 +300,7 @@ function getSectionFromHeading(text: string): keyof NotionPageSections | null {
 function splitListText(text: string) {
   return text
     .split(/\r?\n/)
-    .map((line) => line.replace(/^[-•*\s]+/, "").trim())
+    .map((line) => line.replace(/^[-*•\s]+/, "").trim())
     .filter(Boolean)
 }
 
@@ -266,18 +312,19 @@ function splitDiscussionText(text: string) {
   let active: "keyPoints" | "decisions" = "keyPoints"
 
   for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.replace(/^[-•*\s]+/, "").trim()
+    const trimmed = line.replace(/^[-*•\s]+/, "").trim()
 
     if (!trimmed) {
       continue
     }
 
-    if (trimmed.includes("핵심")) {
+    const lower = trimmed.toLowerCase()
+    if (lower.includes("key point") || lower.includes("핵심") || lower.includes("논의")) {
       active = "keyPoints"
       continue
     }
 
-    if (trimmed.includes("결정")) {
+    if (lower.includes("decision") || lower.includes("결정")) {
       active = "decisions"
       continue
     }
@@ -289,11 +336,13 @@ function splitDiscussionText(text: string) {
 }
 
 function parseActionItem(text: string): ActionItem {
-  const owner = text.match(/담당[:\s]+([^|)]+)/)?.[1]?.trim() ?? null
-  const dueDate = text.match(/마감[:\s]+([^|)]+)/)?.[1]?.trim() ?? null
+  const owner =
+    text.match(/(?:담당|owner|assignee)[:\s]+([^|)]+)/i)?.[1]?.trim() ?? null
+  const dueDate =
+    text.match(/(?:마감|due|due date)[:\s]+([^|)]+)/i)?.[1]?.trim() ?? null
 
   return {
-    task: text.replace(/\((담당|마감)[^)]+\)/g, "").trim() || text,
+    task: text.replace(/\((?:담당|마감|owner|assignee|due|due date)[^)]+\)/gi, "").trim() || text,
     owner: owner === "미정" ? null : owner,
     dueDate: dueDate === "미정" ? null : dueDate,
   }
