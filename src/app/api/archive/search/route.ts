@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const records = await fetchNotionMeetingRecords()
+    const records = await fetchNotionMeetingRecords({ userId: auth.userId })
     if (records.length === 0) {
       return Response.json({
         answer: "검색할 Notion 회의록이 아직 없습니다.",
