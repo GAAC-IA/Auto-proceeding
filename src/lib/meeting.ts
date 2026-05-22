@@ -1,5 +1,14 @@
 import { z } from "zod"
 
+const NOTION_TEXT_LIMIT = 1900
+const SUMMARY_LIMIT = 900
+const LIST_ITEM_LIMIT = 160
+const ACTION_TASK_LIMIT = 140
+const MAX_KEY_POINTS = 8
+const MAX_DECISIONS = 6
+const MAX_ACTION_ITEMS = 8
+const MAX_TAGS = 8
+
 export const ActionItemSchema = z
   .object({
     task: z.string().describe("실행 가능한 작업 단위"),
@@ -78,18 +87,64 @@ function parseJsonString(raw: string): unknown {
   }
 }
 
-export function convertToN8nPayload(summary: MeetingSummary, transcriptText?: string) {
+export function convertToN8nPayload(summary: MeetingSummary) {
+  const keyPoints = truncateList(
+    summary.keyPoints,
+    MAX_KEY_POINTS,
+    LIST_ITEM_LIMIT
+  )
+  const decisions = truncateList(
+    summary.decisions,
+    MAX_DECISIONS,
+    LIST_ITEM_LIMIT
+  )
+
   return {
-    title: summary.title || "회의록 자동 생성",
-    summary: summary.summary || "요약 정보 없음",
-    key_points: summary.keyPoints || [],
-    decisions: summary.decisions || [],
-    action_items: (summary.actionItems || []).map((item) => ({
+    title: truncateText(summary.title, 120) || "회의록 자동 생성",
+    summary: truncateText(summary.summary || "요약 정보 없음", SUMMARY_LIMIT),
+    key_points: fitJoinedText(keyPoints, NOTION_TEXT_LIMIT),
+    decisions: fitJoinedText(decisions, NOTION_TEXT_LIMIT),
+    action_items: (summary.actionItems || []).slice(0, MAX_ACTION_ITEMS).map((item) => ({
       assignee: item.owner || "미지정",
-      task: item.task || "",
+      task: truncateText(item.task || "", ACTION_TASK_LIMIT),
       due_date: item.dueDate || null,
     })),
-    tags: summary.tags || [],
-    transcript: transcriptText || "",
+    tags: truncateList(summary.tags, MAX_TAGS, 24),
+    transcript: "",
   }
+}
+
+function truncateList(items: string[] = [], maxItems: number, maxLength: number) {
+  return items
+    .slice(0, maxItems)
+    .map((item) => truncateText(item, maxLength))
+    .filter(Boolean)
+}
+
+function fitJoinedText(items: string[], maxLength: number) {
+  const fitted: string[] = []
+  let currentLength = 0
+
+  for (const item of items) {
+    const nextLength = currentLength + (fitted.length > 0 ? 1 : 0) + item.length
+
+    if (nextLength > maxLength) {
+      break
+    }
+
+    fitted.push(item)
+    currentLength = nextLength
+  }
+
+  return fitted
+}
+
+function truncateText(value: string, maxLength: number) {
+  const trimmed = value.trim()
+
+  if (trimmed.length <= maxLength) {
+    return trimmed
+  }
+
+  return `${trimmed.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`
 }

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { parseMeetingSummaryJson, validateMeetingText } from "./meeting"
+import {
+  convertToN8nPayload,
+  parseMeetingSummaryJson,
+  validateMeetingText,
+} from "./meeting"
 
 const validSummary = {
   title: "AI Product Kick-off Meeting",
@@ -53,5 +57,36 @@ describe("빈 회의 텍스트 입력 처리", () => {
     expect(validateMeetingText({ meetingText: "  회의 내용입니다.  " })).toBe(
       "회의 내용입니다."
     )
+  })
+})
+
+describe("n8n payload 길이 제한", () => {
+  it("Notion paragraph 제한을 넘지 않도록 긴 목록과 요약을 줄인다", () => {
+    const longText = "가".repeat(2500)
+    const payload = convertToN8nPayload({
+      ...validSummary,
+      summary: longText,
+      keyPoints: Array.from({ length: 20 }, (_, index) =>
+        `${index + 1}. ${"핵심 논의 ".repeat(40)}`
+      ),
+      decisions: Array.from({ length: 20 }, (_, index) =>
+        `${index + 1}. ${"결정 사항 ".repeat(40)}`
+      ),
+      actionItems: [
+        {
+          task: "작업 ".repeat(100),
+          owner: "Jane Kim",
+          dueDate: null,
+        },
+      ],
+      tags: Array.from({ length: 20 }, (_, index) => `tag-${index}`),
+    })
+
+    expect(payload.summary.length).toBeLessThanOrEqual(900)
+    expect(payload.key_points.join("\n").length).toBeLessThanOrEqual(1900)
+    expect(payload.decisions.join("\n").length).toBeLessThanOrEqual(1900)
+    expect(payload.action_items[0].task.length).toBeLessThanOrEqual(140)
+    expect(payload.tags).toHaveLength(8)
+    expect(payload.transcript).toBe("")
   })
 })
