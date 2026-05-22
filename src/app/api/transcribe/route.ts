@@ -34,10 +34,11 @@ export async function POST(request: Request) {
     return Response.json({
       text: transcription.text,
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Whisper transcription API error:", error)
+    const errorMessage = error instanceof Error ? error.message : "음성 전사 중 에러가 발생했습니다."
     return Response.json(
-      { error: error.message || "음성 전사 중 에러가 발생했습니다." },
+      { error: errorMessage },
       { status: 500 }
     )
   }

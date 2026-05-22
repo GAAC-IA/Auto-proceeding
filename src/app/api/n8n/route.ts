@@ -63,10 +63,11 @@ export async function POST(request: Request) {
       success: true,
       message: "n8n 워크플로우로 성공적으로 연동되었습니다.",
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("n8n Sync API error:", error)
+    const errorMessage = error instanceof Error ? error.message : "n8n 연동 중 알 수 없는 오류가 발생했습니다."
     return Response.json(
-      { error: error.message || "n8n 연동 중 알 수 없는 오류가 발생했습니다." },
+      { error: errorMessage },
       { status: 500 }
     )
   }
