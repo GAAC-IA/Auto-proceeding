@@ -77,6 +77,11 @@ type AuthUser = {
 
 const AUTH_STORAGE_KEY = "ama-session"
 const THEME_STORAGE_KEY = "ama-theme"
+const TEST_LOGIN_ACCOUNT = {
+  email: "test@ama.ai",
+  password: "ama1234!",
+  name: "AMA Tester",
+}
 
 const sidebarItems: Array<{
   id: WorkspaceView
@@ -546,9 +551,17 @@ function LoginScreen({
       return
     }
 
+    if (
+      trimmedEmail !== TEST_LOGIN_ACCOUNT.email ||
+      password !== TEST_LOGIN_ACCOUNT.password
+    ) {
+      setError("테스트 계정 정보가 일치하지 않습니다.")
+      return
+    }
+
     onLogin({
-      email: trimmedEmail,
-      name: trimmedEmail.split("@")[0] || "AMA User",
+      email: TEST_LOGIN_ACCOUNT.email,
+      name: TEST_LOGIN_ACCOUNT.name,
     })
   }
 
@@ -578,6 +591,16 @@ function LoginScreen({
           </div>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
+            <p className="font-black">임시 테스트 계정</p>
+            <p className="mt-1 font-medium">
+              이메일: {TEST_LOGIN_ACCOUNT.email}
+            </p>
+            <p className="font-medium">
+              비밀번호: {TEST_LOGIN_ACCOUNT.password}
+            </p>
+          </div>
+
           <form className="space-y-4" onSubmit={handleSubmit}>
             <label className="block">
               <span className="mb-2 flex items-center gap-2 text-sm font-bold">
@@ -590,7 +613,7 @@ function LoginScreen({
                 type="email"
                 autoComplete="email"
                 className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-blue-500/20"
-                placeholder="admin@ama.ai"
+                placeholder={TEST_LOGIN_ACCOUNT.email}
               />
             </label>
 
