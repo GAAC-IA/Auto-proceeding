@@ -1,0 +1,127 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "{{ $env.N8N_WEBHOOK_PATH }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "{{ $env.N8N_WEBHOOK_ID }}",
+      "name": "Webhook",
+      "webhookId": "{{ $env.N8N_WEBHOOK_ID }}"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "{{ $env.NOTION_DATABASE_ID }}",
+          "mode": "list",
+          "cachedResultName": "회의록 저장",
+          "cachedResultUrl": "https://www.notion.so/{{ $env.NOTION_DATABASE_ID }}"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "{{ $env.N8N_PAGE_TITLE_KEY }}",
+              "title": "={{ $json.body.title }}"
+            },
+            {
+              "key": "{{ $env.N8N_PAGE_SUMMARY_KEY }}",
+              "textContent": "={{ $json.body.summary }}"
+            },
+            {
+              "key": "{{ $env.N8N_PAGE_TAGS_KEY }}",
+              "multiSelectValue": "={{ $json.body.tags }}"
+            },
+            {
+              "key": "{{ $env.N8N_PAGE_DATE_KEY }}",
+              "date": "={{ $json.body.syncedAt }}",
+              "timezone": "{{ $env.N8N_PAGE_TIMEZONE }}"
+            }
+          ]
+        },
+        "blockUi": {
+          "blockValues": [
+            {
+              "type": "heading_1",
+              "textContent": "📌 회의 요약"
+            },
+            {
+              "textContent": "={{ $json.body.summary }}"
+            },
+            {
+              "type": "heading_2",
+              "textContent": "💡 핵심 논의 및 결정사항"
+            },
+            {
+              "textContent": "=[핵심 논의 내용]\n{{ $json.body.key_points && $json.body.key_points.length > 0 ? $json.body.key_points.map(i => '• ' + i).join('\\n') : '없음' }}\n\n[결정사항]\n{{ $json.body.decisions && $json.body.decisions.length > 0 ? $json.body.decisions.map(i => '• ' + i).join('\\n') : '없음' }}"
+            },
+            {
+              "type": "heading_2",
+              "textContent": "📋 담당자별 액션 아이템"
+            },
+            {
+              "textContent": "={{ $json.body.action_items && $json.body.action_items.length > 0 ? $json.body.action_items.map(i => '☐ ' + i.task + ' (담당: ' + i.assignee + ' | 마감: ' + (i.due_date || '미정') + ')').join('\\n') : '없음' }}"
+            },
+            {
+              "type": "heading_2",
+              "textContent": "🎙️ 전체 대화 스크립트"
+            },
+            {
+              "textContent": "={{ $json.body.transcript }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        208,
+        0
+      ],
+       "id": "{{ $env.N8N_CREATE_DATABASE_PAGE_ID }}",
+      "name": "Create a database page",
+      "credentials": {
+        "notionApi": {
+          "id": "{{ $env.N8N_NOTION_CREDENTIAL_ID }}",
+          "name": "{{ $env.N8N_NOTION_CREDENTIAL_NAME }}"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Create a database page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "{{ $env.N8N_WORKFLOW_VERSION_ID }}",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "{{ $env.N8N_INSTANCE_ID }}"
+  },
+  "id": "{{ $env.N8N_WORKFLOW_ID }}",
+  "tags": []
+}
