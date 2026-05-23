@@ -27,16 +27,17 @@ jobs:
             SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
             NOTION_OAUTH_CLIENT_ID=${{ secrets.NOTION_OAUTH_CLIENT_ID }}
             NOTION_OAUTH_CLIENT_SECRET=${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
-            APP_BASE_URL=${{ secrets.APP_BASE_URL || 'https://ia-ama.site' }}
-            NOTION_OAUTH_REDIRECT_URI=${{ secrets.NOTION_OAUTH_REDIRECT_URI || 'https://ia-ama.site/api/notion/oauth/callback' }}
+            APP_BASE_URL=https://ia-ama.site
+            NOTION_OAUTH_REDIRECT_URI=https://ia-ama.site/api/notion/oauth/callback
             N8N_WEBHOOK_URL=${{ secrets.N8N_WEBHOOK_URL }}
             N8N_WEBHOOK_SECRET=${{ secrets.N8N_WEBHOOK_SECRET }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-            APP_BASE_URL=${{ secrets.APP_BASE_URL }}
             EOF
+
+            grep -E '^(APP_BASE_URL|NOTION_OAUTH_REDIRECT_URI)=' .env.production
 
             npm install
             npm run build
 
-            pm2 restart ama-web || pm2 start npm --name ama-web -- start
+            pm2 restart ama-web --update-env || pm2 start npm --name ama-web -- start
             pm2 save
