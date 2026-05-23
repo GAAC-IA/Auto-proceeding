@@ -37,6 +37,8 @@ export async function POST(request: Request) {
     }
 
     const { summary } = body
+    const transcriptText =
+      typeof body.transcriptText === "string" ? body.transcriptText : ""
 
     if (!summary || typeof summary !== "object") {
       return Response.json(
