@@ -54,6 +54,20 @@ describe("Notion OAuth URL 설정", () => {
     )
   })
 
+  it("APP_BASE_URL이 localhost로 남아 있어도 외부 Notion redirect URI가 우선한다", () => {
+    process.env.APP_BASE_URL = "http://localhost:3000"
+    process.env.NOTION_OAUTH_REDIRECT_URI =
+      "https://ia-ama.site/api/notion/oauth/callback"
+
+    const config = getNotionOAuthConfig(
+      requestFor("http://localhost:3000/api/notion/oauth/start")
+    )
+
+    expect(config.redirectUri).toBe(
+      "https://ia-ama.site/api/notion/oauth/callback"
+    )
+  })
+
   it("프록시 Host 헤더가 있으면 외부 origin으로 callback을 만든다", () => {
     process.env.NOTION_OAUTH_REDIRECT_URI =
       "http://localhost:3000/api/notion/oauth/callback"

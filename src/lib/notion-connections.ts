@@ -337,6 +337,14 @@ export function getAppBaseUrl(request?: Request | string) {
 
   if (explicitAppUrl) {
     if (
+      configuredRedirectOrigin &&
+      isLocalHost(new URL(explicitAppUrl).hostname) &&
+      !isLocalHost(new URL(configuredRedirectOrigin).hostname)
+    ) {
+      return configuredRedirectOrigin
+    }
+
+    if (
       requestOrigin &&
       isLocalHost(new URL(explicitAppUrl).hostname) &&
       !isLocalHost(new URL(requestOrigin).hostname)
