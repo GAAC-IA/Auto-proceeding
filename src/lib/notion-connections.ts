@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 
-import { createSupabaseAdminClient } from "@/lib/supabase-admin"
+import { createSupabaseAdminClient } from "./supabase-admin"
 
 export type NotionConnection = {
   userId: string
@@ -19,6 +19,14 @@ export type PublicNotionConnection = Omit<
   "accessToken" | "refreshToken"
 >
 
+export type NotionOAuthUrlDebugInfo = {
+  appBaseUrl: string | null
+  redirectUri: string
+  requestOrigin: string | null
+  configuredAppBaseUrlHost: string | null
+  configuredRedirectUriHost: string | null
+}
+
 type NotionTokenResponse = {
   access_token?: unknown
   refresh_token?: unknown
@@ -35,7 +43,7 @@ export function getNotionOAuthConfig(request?: Request | string) {
   const clientId = process.env.NOTION_OAUTH_CLIENT_ID
   const clientSecret = process.env.NOTION_OAUTH_CLIENT_SECRET
   const appBaseUrl = getAppBaseUrl(request)
-  const configuredRedirectUri = process.env.NOTION_OAUTH_REDIRECT_URI
+  const configuredRedirectUri = getConfiguredNotionRedirectUri()
   const redirectUri =
     appBaseUrl
       ? new URL("/api/notion/oauth/callback", appBaseUrl).toString()
@@ -48,6 +56,27 @@ export function getNotionOAuthConfig(request?: Request | string) {
   }
 
   return { clientId, clientSecret, redirectUri }
+}
+
+export function getNotionOAuthUrlDebugInfo(
+  request: Request | string,
+  redirectUri: string
+): NotionOAuthUrlDebugInfo {
+  const appBaseUrl = getAppBaseUrl(request)
+  const configuredAppBaseUrl = getConfiguredAppBaseUrl()
+  const configuredRedirectUri = getConfiguredNotionRedirectUri()
+
+  return {
+    appBaseUrl,
+    redirectUri,
+    requestOrigin: getRequestOrigin(request),
+    configuredAppBaseUrlHost: configuredAppBaseUrl
+      ? new URL(configuredAppBaseUrl).host
+      : null,
+    configuredRedirectUriHost: configuredRedirectUri
+      ? new URL(configuredRedirectUri).host
+      : null,
+  }
 }
 
 export async function createNotionOAuthState(userId: string) {
@@ -302,26 +331,58 @@ function asString(value: unknown) {
 }
 
 export function getAppBaseUrl(request?: Request | string) {
-  const explicitAppUrl =
-    process.env.APP_BASE_URL ??
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+  const explicitAppUrl = getConfiguredAppBaseUrl()
+  const configuredRedirectOrigin = getConfiguredNotionRedirectOrigin()
   const requestOrigin = getRequestOrigin(request)
 
   if (explicitAppUrl) {
-    const explicitOrigin = normalizeOrigin(explicitAppUrl)
     if (
       requestOrigin &&
-      isLocalHost(new URL(explicitOrigin).hostname) &&
+      isLocalHost(new URL(explicitAppUrl).hostname) &&
       !isLocalHost(new URL(requestOrigin).hostname)
     ) {
       return requestOrigin
     }
 
-    return explicitOrigin
+    return explicitAppUrl
+  }
+
+  if (configuredRedirectOrigin) {
+    if (!requestOrigin) {
+      return configuredRedirectOrigin
+    }
+
+    const requestIsLocal = isLocalHost(new URL(requestOrigin).hostname)
+    const redirectIsLocal = isLocalHost(new URL(configuredRedirectOrigin).hostname)
+
+    if (requestIsLocal && !redirectIsLocal) {
+      return configuredRedirectOrigin
+    }
+
+    if (!requestIsLocal && redirectIsLocal) {
+      return requestOrigin
+    }
   }
 
   return requestOrigin
+}
+
+function getConfiguredAppBaseUrl() {
+  const explicitAppUrl =
+    process.env.APP_BASE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+
+  return explicitAppUrl ? normalizeOrigin(explicitAppUrl) : null
+}
+
+function getConfiguredNotionRedirectUri() {
+  return process.env.NOTION_OAUTH_REDIRECT_URI || null
+}
+
+function getConfiguredNotionRedirectOrigin() {
+  const redirectUri = getConfiguredNotionRedirectUri()
+  return redirectUri ? normalizeOrigin(redirectUri) : null
 }
 
 function isLocalHost(hostname: string) {
@@ -334,8 +395,14 @@ function normalizeOrigin(url: string) {
 
 function getRequestOrigin(request?: Request | string) {
   if (request instanceof Request) {
-    const forwardedHost = request.headers.get("x-forwarded-host")
-    const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https"
+    const forwardedHost =
+      getFirstHeaderValue(request.headers.get("x-forwarded-host")) ??
+      getForwardedHeaderValue(request.headers.get("forwarded"), "host") ??
+      request.headers.get("host")
+    const forwardedProto =
+      getFirstHeaderValue(request.headers.get("x-forwarded-proto")) ??
+      getForwardedHeaderValue(request.headers.get("forwarded"), "proto") ??
+      "https"
 
     if (forwardedHost) {
       return normalizeOrigin(`${forwardedProto}://${forwardedHost}`)
@@ -345,4 +412,24 @@ function getRequestOrigin(request?: Request | string) {
   }
 
   return request ? new URL(request).origin : null
+}
+
+function getFirstHeaderValue(value: string | null) {
+  return value?.split(",")[0]?.trim() || null
+}
+
+function getForwardedHeaderValue(value: string | null, key: "host" | "proto") {
+  const firstForwardedValue = getFirstHeaderValue(value)
+  if (!firstForwardedValue) {
+    return null
+  }
+
+  for (const part of firstForwardedValue.split(";")) {
+    const [partKey, partValue] = part.split("=")
+    if (partKey?.trim().toLowerCase() === key && partValue?.trim()) {
+      return partValue.trim().replace(/^"|"$/g, "")
+    }
+  }
+
+  return null
 }
