@@ -30,6 +30,7 @@ import {
   Sun,
   Tags,
   Trash2,
+  Upload,
   User,
   X,
 } from "lucide-react"
@@ -87,6 +88,7 @@ type ArchiveSearchResponse = {
 
 type WorkspaceView = "dashboard" | "analysis" | "records" | "archive"
 type ThemeMode = "light" | "dark"
+type AnalysisInputMode = "text" | "voice" | "file"
 
 type AuthUser = {
   id: string
@@ -198,7 +200,7 @@ export function MeetingWorkspace() {
     }
   }, [isResizing])
   const [activeView, setActiveView] = useState<WorkspaceView>("analysis")
-  const [activeTab, setActiveTab] = useState<"text" | "voice">("text")
+  const [activeTab, setActiveTab] = useState<AnalysisInputMode>("text")
   const [meetingText, setMeetingText] = useState("")
   const [summary, setSummary] = useState<MeetingSummary | null>(null)
   const [records, setRecords] = useState<NotionMeetingRecord[]>([])
@@ -453,7 +455,7 @@ export function MeetingWorkspace() {
       .padStart(2, "0")}`
   }
 
-  const handleAudioStop = async (blob: Blob) => {
+  const transcribeAudioBlob = async (blob: Blob, fileName: string) => {
     if (blob.size === 0) {
       setError("녹음된 오디오가 비어 있습니다. 다시 녹음해 주세요.")
       return
@@ -465,7 +467,7 @@ export function MeetingWorkspace() {
 
     try {
       const formData = new FormData()
-      formData.append("file", blob, "audio.webm")
+      formData.append("file", blob, fileName)
 
       const response = await fetch("/api/transcribe", {
         method: "POST",
@@ -494,6 +496,47 @@ export function MeetingWorkspace() {
       setError(`음성 분석 실패: ${toErrorMessage(err)}`)
     } finally {
       setIsTranscribing(false)
+    }
+  }
+
+  const handleAudioStop = async (blob: Blob) => {
+    await transcribeAudioBlob(blob, "audio.webm")
+  }
+
+  const handleMeetingFileUpload = async (file: File) => {
+    setError(null)
+    setSuccessMessage(null)
+
+    if (file.type.startsWith("audio/")) {
+      await transcribeAudioBlob(file, file.name || "meeting-audio.webm")
+      return
+    }
+
+    const fileName = file.name.toLowerCase()
+    const isTextFile =
+      file.type.startsWith("text/") ||
+      fileName.endsWith(".txt") ||
+      fileName.endsWith(".md") ||
+      fileName.endsWith(".markdown") ||
+      fileName.endsWith(".csv")
+
+    if (!isTextFile) {
+      setError("음성 파일 또는 텍스트 파일(.txt, .md, .csv)을 업로드해 주세요.")
+      return
+    }
+
+    try {
+      const text = (await file.text()).trim()
+
+      if (!text) {
+        throw new Error("업로드한 텍스트 파일이 비어 있습니다.")
+      }
+
+      setMeetingText(text)
+      setSuccessMessage("텍스트 파일을 불러왔습니다. 이어서 AI 분석과 n8n 전송을 시작합니다.")
+      await handleAnalyze(text)
+    } catch (fileError) {
+      setError(`파일 처리 실패: ${toErrorMessage(fileError)}`)
     }
   }
 
@@ -826,6 +869,7 @@ export function MeetingWorkspace() {
                     error={error}
                     formatTime={formatTime}
                     handleAnalyze={handleAnalyze}
+                    handleMeetingFileUpload={handleMeetingFileUpload}
                     handleReset={handleReset}
                     isAnalyzing={isAnalyzing}
                     isN8nSending={isN8nSending}
@@ -1467,6 +1511,7 @@ function AnalysisView({
   error,
   formatTime,
   handleAnalyze,
+  handleMeetingFileUpload,
   handleReset,
   isAnalyzing,
   isN8nSending,
@@ -1478,17 +1523,18 @@ function AnalysisView({
   successMessage,
   summary,
 }: {
-  activeTab: "text" | "voice"
+  activeTab: AnalysisInputMode
   error: string | null
   formatTime: (ms: number) => string
   handleAnalyze: (textToAnalyze?: string) => Promise<void>
+  handleMeetingFileUpload: (file: File) => Promise<void>
   handleReset: () => void
   isAnalyzing: boolean
   isN8nSending: boolean
   isTranscribing: boolean
   meetingText: string
   recorder: ReturnType<typeof useAudioRecorder>
-  setActiveTab: (tab: "text" | "voice") => void
+  setActiveTab: (tab: AnalysisInputMode) => void
   setMeetingText: (value: string) => void
   successMessage: string | null
   summary: MeetingSummary | null
@@ -1509,7 +1555,7 @@ function AnalysisView({
                 </CardDescription>
               </div>
               <Badge variant="outline" className="hidden sm:inline-flex">
-                OpenAI JSON 분석 + n8n 연동
+                Gemini JSON 분석 + n8n 연동
               </Badge>
             </div>
           </CardHeader>
@@ -1535,6 +1581,16 @@ function AnalysisView({
               >
                 실시간 음성 녹음
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("file")}
+                className={`flex-1 rounded-xl py-2 text-sm font-semibold transition-all ${activeTab === "file"
+                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-50"
+                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                  }`}
+              >
+                Upload
+              </button>
             </div>
 
             {activeTab === "text" ? (
@@ -1544,7 +1600,7 @@ function AnalysisView({
                 placeholder="예: 오늘 회의에서는 AI 제품 킥오프 일정, 핵심 기능 정의, 문서 작성 담당자와 마감일을 논의했습니다..."
                 className="min-h-72 resize-y rounded-2xl border-slate-200 bg-slate-50/70 p-4 text-base leading-7 shadow-inner dark:border-slate-700 dark:bg-slate-950"
               />
-            ) : (
+            ) : activeTab === "voice" ? (
               <div className="space-y-4">
                 <div className="flex flex-col items-center justify-center space-y-4 rounded-2xl border border-slate-100 bg-slate-50/50 p-8 dark:border-zinc-700/60 dark:bg-zinc-900/60">
                   {recorder.isRecording ? (
@@ -1598,11 +1654,44 @@ function AnalysisView({
                     <div className="text-center">
                       <p className="text-sm font-bold">회의 음성을 텍스트로 변환 중입니다</p>
                       <p className="mt-1 text-xs text-slate-400">
-                        Whisper 전사가 완료되면 즉시 분석 파이프라인이 실행됩니다.
+                        Gemini STT가 완료되면 즉시 분석 파이프라인이 실행됩니다.
                       </p>
                     </div>
                   </div>
                 )}
+              </div>
+            ) : (
+              <div className="space-y-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-6 text-center dark:border-zinc-700/60 dark:bg-zinc-900/60">
+                <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300">
+                  <Upload className="size-6" />
+                </div>
+                <div>
+                  <p className="text-sm font-black">Meeting file upload</p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    Audio files are transcribed first. Text files go straight into the meeting analysis flow.
+                  </p>
+                </div>
+                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700">
+                  <Upload className="size-4" />
+                  Select file
+                  <input
+                    type="file"
+                    accept="audio/*,.txt,.md,.markdown,.csv,text/plain,text/markdown,text/csv"
+                    className="sr-only"
+                    disabled={isAnalyzing || isTranscribing || isN8nSending}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      event.currentTarget.value = ""
+
+                      if (file) {
+                        void handleMeetingFileUpload(file)
+                      }
+                    }}
+                  />
+                </label>
+                <p className="text-xs text-slate-400">
+                  Supported: mp3, m4a, wav, webm, txt, md, csv
+                </p>
               </div>
             )}
 

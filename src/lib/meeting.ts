@@ -87,7 +87,7 @@ function parseJsonString(raw: string): unknown {
   }
 }
 
-export function convertToN8nPayload(summary: MeetingSummary) {
+export function convertToN8nPayload(summary: MeetingSummary, transcriptText = "") {
   const keyPoints = truncateList(
     summary.keyPoints,
     MAX_KEY_POINTS,
@@ -110,7 +110,7 @@ export function convertToN8nPayload(summary: MeetingSummary) {
       due_date: item.dueDate || null,
     })),
     tags: truncateList(summary.tags, MAX_TAGS, 24),
-    transcript: "",
+    transcript: truncateText(transcriptText, NOTION_TEXT_LIMIT),
   }
 }
 
