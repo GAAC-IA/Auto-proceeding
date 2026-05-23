@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 
-import { createSupabaseAdminClient } from "@/lib/supabase-admin"
+import { createSupabaseAdminClient } from "./supabase-admin"
 
 export type NotionConnection = {
   userId: string
