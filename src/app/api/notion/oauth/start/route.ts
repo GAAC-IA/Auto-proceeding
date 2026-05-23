@@ -1,6 +1,7 @@
 import {
   createNotionOAuthState,
   getNotionOAuthConfig,
+  getNotionOAuthUrlDebugInfo,
 } from "@/lib/notion-connections"
 import { requireAuthenticatedUser } from "@/lib/server-auth"
 
@@ -23,7 +24,10 @@ export async function POST(request: Request) {
     authorizeUrl.searchParams.set("response_type", "code")
     authorizeUrl.searchParams.set("state", state)
 
-    return Response.json({ url: authorizeUrl.toString() })
+    return Response.json({
+      url: authorizeUrl.toString(),
+      debug: getNotionOAuthUrlDebugInfo(request, redirectUri),
+    })
   } catch (error) {
     const message =
       error instanceof Error

@@ -19,6 +19,14 @@ export type PublicNotionConnection = Omit<
   "accessToken" | "refreshToken"
 >
 
+export type NotionOAuthUrlDebugInfo = {
+  appBaseUrl: string | null
+  redirectUri: string
+  requestOrigin: string | null
+  configuredAppBaseUrlHost: string | null
+  configuredRedirectUriHost: string | null
+}
+
 type NotionTokenResponse = {
   access_token?: unknown
   refresh_token?: unknown
@@ -48,6 +56,30 @@ export function getNotionOAuthConfig(request?: Request | string) {
   }
 
   return { clientId, clientSecret, redirectUri }
+}
+
+export function getNotionOAuthUrlDebugInfo(
+  request: Request | string,
+  redirectUri: string
+): NotionOAuthUrlDebugInfo {
+  const appBaseUrl = getAppBaseUrl(request)
+  const configuredAppBaseUrl =
+    process.env.APP_BASE_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+  const configuredRedirectUri = process.env.NOTION_OAUTH_REDIRECT_URI ?? null
+
+  return {
+    appBaseUrl,
+    redirectUri,
+    requestOrigin: getRequestOrigin(request),
+    configuredAppBaseUrlHost: configuredAppBaseUrl
+      ? new URL(configuredAppBaseUrl).host
+      : null,
+    configuredRedirectUriHost: configuredRedirectUri
+      ? new URL(configuredRedirectUri).host
+      : null,
+  }
 }
 
 export async function createNotionOAuthState(userId: string) {
