@@ -1,4 +1,7 @@
-import { fetchNotionMeetingRecords } from "@/lib/notion-records"
+import {
+  fetchNotionMeetingRecords,
+  NotionRecordsSetupError,
+} from "@/lib/notion-records"
 import { requireAuthenticatedUser } from "@/lib/server-auth"
 
 export const runtime = "nodejs"
@@ -13,6 +16,10 @@ export async function GET(request: Request) {
     const records = await fetchNotionMeetingRecords({ userId: auth.userId })
     return Response.json({ records })
   } catch (error) {
+    if (error instanceof NotionRecordsSetupError) {
+      return Response.json({ error: error.message }, { status: 409 })
+    }
+
     const message =
       error instanceof Error
         ? error.message

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import {
   consumeNotionOAuthState,
   exchangeNotionCode,
+  getAppBaseUrl,
   upsertNotionConnection,
 } from "@/lib/notion-connections"
 
@@ -10,7 +11,7 @@ export const runtime = "nodejs"
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
-  const appUrl = new URL("/", url.origin)
+  const appUrl = new URL("/", getAppBaseUrl(request) ?? url.origin)
   const code = url.searchParams.get("code")
   const state = url.searchParams.get("state")
   const oauthError = url.searchParams.get("error")
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
 
   try {
     const userId = await consumeNotionOAuthState(state)
-    const token = await exchangeNotionCode(code, request.url)
+    const token = await exchangeNotionCode(code, request)
     await upsertNotionConnection(userId, token)
 
     appUrl.searchParams.set("notion", "connected")

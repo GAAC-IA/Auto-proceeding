@@ -11,6 +11,13 @@ type FetchNotionMeetingRecordsOptions = {
   userId: string
 }
 
+export class NotionRecordsSetupError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "NotionRecordsSetupError"
+  }
+}
+
 export async function fetchNotionMeetingRecords(
   options: FetchNotionMeetingRecordsOptions
 ): Promise<NotionMeetingRecord[]> {
@@ -45,11 +52,15 @@ async function getUserNotionCredentials(userId: string) {
   const connection = await getNotionConnection(userId)
 
   if (!connection) {
-    throw new Error("Notion 연결이 필요합니다. 계정 정보에서 Notion을 먼저 연결해주세요.")
+    throw new NotionRecordsSetupError(
+      "Notion 연결이 필요합니다. 계정 정보에서 Notion을 먼저 연결해주세요."
+    )
   }
 
   if (!connection.notionDatabaseId) {
-    throw new Error("Notion 데이터베이스 ID가 필요합니다. 계정 정보에서 저장해주세요.")
+    throw new NotionRecordsSetupError(
+      "Notion 데이터베이스 ID가 필요합니다. 계정 정보에서 저장해주세요."
+    )
   }
 
   return {

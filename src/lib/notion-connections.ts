@@ -31,12 +31,17 @@ type NotionTokenResponse = {
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000
 
-export function getNotionOAuthConfig(requestUrl?: string) {
+export function getNotionOAuthConfig(request?: Request | string) {
   const clientId = process.env.NOTION_OAUTH_CLIENT_ID
   const clientSecret = process.env.NOTION_OAUTH_CLIENT_SECRET
+  const appBaseUrl = getAppBaseUrl(request)
+  const configuredRedirectUri = process.env.NOTION_OAUTH_REDIRECT_URI
   const redirectUri =
-    process.env.NOTION_OAUTH_REDIRECT_URI ??
-    (requestUrl ? new URL("/api/notion/oauth/callback", requestUrl).toString() : null)
+    configuredRedirectUri && !shouldIgnoreLocalRedirect(configuredRedirectUri, appBaseUrl)
+      ? configuredRedirectUri
+      : appBaseUrl
+        ? new URL("/api/notion/oauth/callback", appBaseUrl).toString()
+        : null
 
   if (!clientId || !clientSecret || !redirectUri) {
     throw new Error(
@@ -90,8 +95,8 @@ export async function consumeNotionOAuthState(state: string) {
   return data.user_id as string
 }
 
-export async function exchangeNotionCode(code: string, requestUrl: string) {
-  const { clientId, clientSecret, redirectUri } = getNotionOAuthConfig(requestUrl)
+export async function exchangeNotionCode(code: string, request: Request | string) {
+  const { clientId, clientSecret, redirectUri } = getNotionOAuthConfig(request)
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
 
   const response = await fetch("https://api.notion.com/v1/oauth/token", {
@@ -128,6 +133,20 @@ export async function upsertNotionConnection(
 ) {
   const supabase = createSupabaseAdminClient()
   const existing = await getNotionConnection(userId)
+  const existingByBot = await getNotionConnectionByBotId(token.botId)
+  const notionDatabaseId =
+    existing?.notionDatabaseId ?? existingByBot?.notionDatabaseId ?? null
+
+  if (existing && existing.botId !== token.botId) {
+    const { error } = await supabase
+      .from("user_notion_connections")
+      .delete()
+      .eq("user_id", userId)
+
+    if (error) {
+      throw new Error(`기존 Notion 연결 정리 실패: ${error.message}`)
+    }
+  }
 
   const { error } = await supabase.from("user_notion_connections").upsert(
     {
@@ -139,10 +158,10 @@ export async function upsertNotionConnection(
       workspace_name: token.workspaceName,
       workspace_icon: token.workspaceIcon,
       duplicated_template_id: token.duplicatedTemplateId,
-      notion_database_id: existing?.notionDatabaseId ?? null,
+      notion_database_id: notionDatabaseId,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "user_id" }
+    { onConflict: existingByBot ? "bot_id" : "user_id" }
   )
 
   if (error) {
@@ -164,6 +183,39 @@ export async function getNotionConnection(
 
   if (error) {
     throw new Error(`Notion 연결 조회 실패: ${error.message}`)
+  }
+
+  if (!data) {
+    return null
+  }
+
+  return {
+    userId: data.user_id,
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    botId: data.bot_id,
+    workspaceId: data.workspace_id,
+    workspaceName: data.workspace_name,
+    workspaceIcon: data.workspace_icon,
+    duplicatedTemplateId: data.duplicated_template_id,
+    notionDatabaseId: data.notion_database_id,
+  }
+}
+
+async function getNotionConnectionByBotId(
+  botId: string
+): Promise<NotionConnection | null> {
+  const supabase = createSupabaseAdminClient()
+  const { data, error } = await supabase
+    .from("user_notion_connections")
+    .select(
+      "user_id, access_token, refresh_token, bot_id, workspace_id, workspace_name, workspace_icon, duplicated_template_id, notion_database_id"
+    )
+    .eq("bot_id", botId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(`Notion 봇 연결 조회 실패: ${error.message}`)
   }
 
   if (!data) {
@@ -249,4 +301,47 @@ function parseNotionTokenResponse(body: NotionTokenResponse) {
 
 function asString(value: unknown) {
   return typeof value === "string" && value.trim() ? value : null
+}
+
+export function getAppBaseUrl(request?: Request | string) {
+  const explicitAppUrl =
+    process.env.APP_BASE_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+
+  if (explicitAppUrl) {
+    return normalizeOrigin(explicitAppUrl)
+  }
+
+  if (request instanceof Request) {
+    const forwardedHost = request.headers.get("x-forwarded-host")
+    const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https"
+
+    if (forwardedHost) {
+      return normalizeOrigin(`${forwardedProto}://${forwardedHost}`)
+    }
+
+    return new URL(request.url).origin
+  }
+
+  return request ? new URL(request).origin : null
+}
+
+function shouldIgnoreLocalRedirect(redirectUri: string, appBaseUrl: string | null) {
+  if (!appBaseUrl) {
+    return false
+  }
+
+  const redirectHost = new URL(redirectUri).hostname
+  const appHost = new URL(appBaseUrl).hostname
+
+  return isLocalHost(redirectHost) && !isLocalHost(appHost)
+}
+
+function isLocalHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+}
+
+function normalizeOrigin(url: string) {
+  return new URL(url).origin
 }

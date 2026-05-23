@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { clientId, redirectUri } = getNotionOAuthConfig(request.url)
+    const { clientId, redirectUri } = getNotionOAuthConfig(request)
     const state = await createNotionOAuthState(auth.userId)
     const authorizeUrl = new URL("https://api.notion.com/v1/oauth/authorize")
 
