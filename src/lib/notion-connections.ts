@@ -37,15 +37,13 @@ export function getNotionOAuthConfig(request?: Request | string) {
   const appBaseUrl = getAppBaseUrl(request)
   const configuredRedirectUri = process.env.NOTION_OAUTH_REDIRECT_URI
   const redirectUri =
-    configuredRedirectUri && !shouldIgnoreLocalRedirect(configuredRedirectUri, appBaseUrl)
-      ? configuredRedirectUri
-      : appBaseUrl
-        ? new URL("/api/notion/oauth/callback", appBaseUrl).toString()
-        : null
+    appBaseUrl
+      ? new URL("/api/notion/oauth/callback", appBaseUrl).toString()
+      : configuredRedirectUri ?? null
 
   if (!clientId || !clientSecret || !redirectUri) {
     throw new Error(
-      "NOTION_OAUTH_CLIENT_ID, NOTION_OAUTH_CLIENT_SECRET, NOTION_OAUTH_REDIRECT_URI를 설정해주세요."
+      "NOTION_OAUTH_CLIENT_ID, NOTION_OAUTH_CLIENT_SECRET, APP_BASE_URL 또는 NOTION_OAUTH_REDIRECT_URI를 설정해주세요."
     )
   }
 
@@ -308,11 +306,33 @@ export function getAppBaseUrl(request?: Request | string) {
     process.env.APP_BASE_URL ??
     process.env.NEXT_PUBLIC_APP_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+  const requestOrigin = getRequestOrigin(request)
 
   if (explicitAppUrl) {
-    return normalizeOrigin(explicitAppUrl)
+    const explicitOrigin = normalizeOrigin(explicitAppUrl)
+    if (
+      requestOrigin &&
+      isLocalHost(new URL(explicitOrigin).hostname) &&
+      !isLocalHost(new URL(requestOrigin).hostname)
+    ) {
+      return requestOrigin
+    }
+
+    return explicitOrigin
   }
 
+  return requestOrigin
+}
+
+function isLocalHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+}
+
+function normalizeOrigin(url: string) {
+  return new URL(url).origin
+}
+
+function getRequestOrigin(request?: Request | string) {
   if (request instanceof Request) {
     const forwardedHost = request.headers.get("x-forwarded-host")
     const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https"
@@ -325,23 +345,4 @@ export function getAppBaseUrl(request?: Request | string) {
   }
 
   return request ? new URL(request).origin : null
-}
-
-function shouldIgnoreLocalRedirect(redirectUri: string, appBaseUrl: string | null) {
-  if (!appBaseUrl) {
-    return false
-  }
-
-  const redirectHost = new URL(redirectUri).hostname
-  const appHost = new URL(appBaseUrl).hostname
-
-  return isLocalHost(redirectHost) && !isLocalHost(appHost)
-}
-
-function isLocalHost(hostname: string) {
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
-}
-
-function normalizeOrigin(url: string) {
-  return new URL(url).origin
 }
