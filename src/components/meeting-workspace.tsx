@@ -67,6 +67,11 @@ type AnalyzeResponse = {
   error?: string
 }
 
+type TranscribeResponse = {
+  text?: string
+  error?: string
+}
+
 type NotionResponse = {
   records?: NotionMeetingRecord[]
   error?: string
@@ -113,6 +118,7 @@ type NotionConnectionResponse = {
 }
 
 const THEME_STORAGE_KEY = "ama-theme"
+const MAX_AUDIO_UPLOAD_BYTES = 24 * 1024 * 1024
 
 const sidebarItems: Array<{
   id: WorkspaceView
@@ -461,6 +467,15 @@ export function MeetingWorkspace() {
       return
     }
 
+    if (blob.size > MAX_AUDIO_UPLOAD_BYTES) {
+      setError(
+        `음성 파일이 너무 큽니다. 현재 ${(blob.size / 1024 / 1024).toFixed(
+          1
+        )}MB이며, 24MB 이하로 녹음하거나 잘라서 업로드해 주세요.`
+      )
+      return
+    }
+
     setIsTranscribing(true)
     setError(null)
     setSuccessMessage(null)
@@ -474,7 +489,10 @@ export function MeetingWorkspace() {
         body: formData,
         ...(await getAuthFetchOptions()),
       })
-      const data = await response.json()
+      const data = await readJsonResponse<TranscribeResponse>(
+        response,
+        "음성 전사 API"
+      )
 
       if (!response.ok) {
         throw new Error(data.error || "음성 인식 중 오류가 발생했습니다.")
@@ -1589,7 +1607,7 @@ function AnalysisView({
                   : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
                   }`}
               >
-                Upload
+                파일 업로드
               </button>
             </div>
 
@@ -2427,6 +2445,36 @@ async function getAuthFetchOptions(init: RequestInit = {}): Promise<RequestInit>
   return {
     ...init,
     headers,
+  }
+}
+
+async function readJsonResponse<T>(response: Response, label: string): Promise<T> {
+  const contentType = response.headers.get("content-type") ?? ""
+
+  if (!contentType.toLowerCase().includes("application/json")) {
+    const body = await response.text()
+    const preview = body.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+    const statusText = `${response.status} ${response.statusText}`.trim()
+
+    if (response.status === 413) {
+      throw new Error(
+        `${label} 업로드 용량 제한에 걸렸습니다. 녹음 시간을 줄이거나, 서버/nginx의 업로드 제한(client_max_body_size)을 늘려 주세요.`
+      )
+    }
+
+    throw new Error(
+      `${label}가 JSON 대신 HTML/텍스트 응답을 반환했습니다. 상태: ${statusText}. ${
+        preview
+          ? `응답 내용: ${preview.slice(0, 180)}`
+          : "개발 서버 오류 또는 로그인 세션을 확인해 주세요."
+      }`
+    )
+  }
+
+  try {
+    return (await response.json()) as T
+  } catch {
+    throw new Error(`${label} 응답 JSON을 해석할 수 없습니다.`)
   }
 }
 
