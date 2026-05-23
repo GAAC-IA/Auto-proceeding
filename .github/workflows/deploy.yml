@@ -31,6 +31,7 @@ jobs:
             N8N_WEBHOOK_URL=${{ secrets.N8N_WEBHOOK_URL }}
             N8N_WEBHOOK_SECRET=${{ secrets.N8N_WEBHOOK_SECRET }}
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            APP_BASE_URL=${{ secrets.APP_BASE_URL }}
             EOF
 
             npm install
