@@ -1,4 +1,4 @@
-import OpenAI from "openai"
+import OpenAI, { toFile } from "openai"
 
 import { requireAuthenticatedUser } from "@/lib/server-auth"
 
@@ -96,12 +96,12 @@ async function normalizeAudioFile(
     }
   }
 
-  const arrayBuffer = await file.arrayBuffer()
+  const bytes = new Uint8Array(await file.arrayBuffer())
 
   return {
     ok: true,
-    file: new File([arrayBuffer], `audio.${extension}`, {
-      type: file.type || getMimeType(extension),
+    file: await toFile(bytes, `audio.${extension}`, {
+      type: getMimeType(extension),
     }),
   }
 }
@@ -113,7 +113,7 @@ function getFileExtension(fileName: string) {
 
 function getMimeType(extension: string) {
   if (extension === "m4a") {
-    return "audio/mp4"
+    return "audio/m4a"
   }
 
   if (extension === "mp4") {
