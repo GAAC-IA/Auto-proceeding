@@ -87,10 +87,7 @@ function parseJsonString(raw: string): unknown {
   }
 }
 
-export function convertToN8nPayload(
-  summary: MeetingSummary,
-  transcriptText = ""
-) {
+export function convertToN8nPayload(summary: MeetingSummary, transcriptText = "") {
   const keyPoints = truncateList(
     summary.keyPoints,
     MAX_KEY_POINTS,

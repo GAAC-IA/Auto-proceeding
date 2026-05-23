@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "AMA | 회의록 자동 생성",
-  description: "OpenAI와 Notion API 기반 회의록 자동 생성 서비스",
+  description: "Gemini API와 Notion API 기반 회의록 자동 생성 서비스",
   icons: {
     icon: "/AMA_icon.png",
     apple: "/AMA_icon.png",
