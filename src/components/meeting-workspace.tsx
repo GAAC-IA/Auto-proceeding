@@ -295,8 +295,10 @@ export function MeetingWorkspace() {
       const connection = data.connection ?? null
       setNotionConnection(connection)
       setNotionDatabaseIdInput(connection?.notionDatabaseId ?? "")
+      return connection
     } catch (requestError) {
       setNotionConnectionError(toErrorMessage(requestError))
+      return null
     }
   }, [])
 
@@ -306,8 +308,14 @@ export function MeetingWorkspace() {
     }
 
     const timer = setTimeout(() => {
-      void loadNotionRecords()
-      void loadNotionConnection()
+      void loadNotionConnection().then((connection) => {
+        if (connection?.notionDatabaseId) {
+          void loadNotionRecords()
+        } else {
+          setRecords([])
+          setRecordsError(null)
+        }
+      })
     }, 0)
 
     return () => clearTimeout(timer)
@@ -320,6 +328,7 @@ export function MeetingWorkspace() {
 
     const params = new URLSearchParams(window.location.search)
     const notionStatus = params.get("notion")
+    const notionReason = params.get("reason")
     if (!notionStatus) {
       return
     }
@@ -329,10 +338,10 @@ export function MeetingWorkspace() {
         setNotionConnectionNotice("Notion 연결이 완료되었습니다. 데이터베이스 ID를 저장해주세요.")
         setShowProfileModal(true)
       } else if (notionStatus === "denied") {
-        setNotionConnectionError("Notion 연결이 취소되었습니다.")
+        setNotionConnectionError(notionReason ?? "Notion 연결이 취소되었습니다.")
         setShowProfileModal(true)
       } else if (notionStatus === "error") {
-        setNotionConnectionError("Notion 연결 중 오류가 발생했습니다.")
+        setNotionConnectionError(notionReason ?? "Notion 연결 중 오류가 발생했습니다.")
         setShowProfileModal(true)
       }
     }, 0)
@@ -575,6 +584,28 @@ export function MeetingWorkspace() {
     setError(null)
     setSuccessMessage(null)
   }
+
+  const isNotionConnected = Boolean(notionConnection)
+  const hasNotionDatabase = Boolean(notionConnection?.notionDatabaseId)
+  const profileIntegrationStatus = !isNotionConnected
+    ? {
+      label: "Notion 미연결",
+      className: "font-semibold text-rose-600 dark:text-rose-400",
+    }
+    : hasNotionDatabase
+      ? {
+        label: "연동 완료",
+        className: "font-semibold text-emerald-600 dark:text-emerald-400",
+      }
+      : {
+        label: "DB 설정 필요",
+        className: "font-semibold text-amber-600 dark:text-amber-400",
+      }
+  const profileIntegrationSummary = [
+    `마이크 ${getPermissionLabel(recorder.permissionState)}`,
+    isNotionConnected ? "Notion 연결됨" : "Notion 미연결",
+    isN8nSending ? "n8n 전송 중" : summary ? "n8n 완료" : "n8n 대기",
+  ].join(", ")
 
   if (!authUser) {
     return (
@@ -885,12 +916,14 @@ export function MeetingWorkspace() {
                   <span className="font-semibold text-indigo-600 dark:text-indigo-400">임시 테스트 계정</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-500 dark:text-slate-400 font-medium">상태</span>
-                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">활성화됨</span>
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">연동 상태</span>
+                  <span className={profileIntegrationStatus.className}>
+                    {profileIntegrationStatus.label}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500 dark:text-slate-400 font-medium">권한</span>
-                  <span className="font-semibold">마이크, Notion, n8n 연동</span>
+                  <span className="text-right font-semibold">{profileIntegrationSummary}</span>
                 </div>
               </div>
               <div className="rounded-2xl bg-white/40 p-4 dark:bg-slate-950/20 border border-slate-200/20 dark:border-slate-800/20 space-y-3">
